@@ -7,8 +7,18 @@ api = Flask(__name__)
 def load_translations():
     url = "https://github.com/deabbo/MTGAPI_Ko/raw/main/cards_data.json"  
     response = requests.get(url)
-    response.encoding = 'utf-8' 
-    return response.json()
+    
+    if response.status_code != 200:
+            print(f"Failed to fetch JSON. Status code: {response.status_code}")
+            return {}
+
+    try:
+        response.encoding = 'utf-8'
+        return response.json()
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {e}")
+        print(f"Response content: {response.text}")
+        return {}
 
 
 translations = load_translations()
