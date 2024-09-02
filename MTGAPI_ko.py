@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, Response
 import requests
 import json
 
-api_test = Flask(__name__)
+api = Flask(__name__)
 
 def load_translations():
     url = "https://github.com/deabbo/MTGAPI_Ko/raw/main/cards_data.json"  
@@ -13,7 +13,7 @@ def load_translations():
 
 translations = load_translations()
 
-@api_test.route('/translate', methods=['GET'])
+@api.route('/translate', methods=['GET'])
 
 def translate():
 
@@ -42,5 +42,5 @@ def translate():
 
 
 if __name__ == '__main__':
-    api_test.run(debug=True)
+    api.run(host='0.0.0.0', port=5000)
 
