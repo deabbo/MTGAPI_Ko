@@ -5,9 +5,9 @@ import json
 api = Flask(__name__)
 
 def load_translations():
-    url = "https://github.com/deabbo/MTGAPI_Ko/raw/main/cards_data.json"  
+    url = "https://drive.google.com/file/d/1f0mploNidfoLQlp-YZCLHDji3q1gbrYf/view?usp=sharing"  
     response = requests.get(url)
-    
+
     if response.status_code != 200:
             print(f"Failed to fetch JSON. Status code: {response.status_code}")
             return {}
