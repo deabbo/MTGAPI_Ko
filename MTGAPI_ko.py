@@ -5,7 +5,7 @@ import json
 api = Flask(__name__)
 
 def load_translations():
-    url = "https://www.dropbox.com/scl/fi/f9owyp4m25ewq4lq1kl9f/cards_data.json?rlkey=kdg8hvf6unumvrsi0lxvmorfa&st=y2y2eq4h&dl=1"  
+    url = "https://www.dropbox.com/scl/fi/w92xvvducopxcvsryrlvh/cards_data.json?rlkey=d1hnfkejfodont9wcyg0nht39&st=eohinznc&dl=1"  
     response = requests.get(url)
 
     if response.status_code != 200:

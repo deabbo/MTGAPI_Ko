@@ -8,9 +8,15 @@ def remove_o_in_braces(text):
     """Remove 'o' characters within braces {}."""
     return re.sub(r'\{[^}]*o[^}]*\}', lambda m: m.group(0).replace('o', ''), text)
 
+
+def remove_html_tags(text):
+    """Remove HTML tags and text within them."""
+    return re.sub(r'<[^>]*>', '', text)
+
 def clean_localizations_koKR(cursor, koKR, loc_id):
     """Clean and update the koKR field in the Localizations table."""
     cleaned_koKR = remove_o_in_braces(koKR)
+    cleaned_koKR = remove_html_tags(cleaned_koKR)
     cursor.execute('''
         UPDATE Localizations
         SET koKR = ?
