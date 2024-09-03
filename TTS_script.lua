@@ -79,11 +79,10 @@ function handleResponse(request, obj)
             
             -- Set the object's description
             obj.setDescription(translatedText)
-        else
-            print("번역할 데이터가 없습니다: " .. (data.error or ""))
         end
     else
         print("API 요청 실패")
     end
 end
 
+-- "매직 한국어 번역기" is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC
