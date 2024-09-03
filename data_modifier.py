@@ -129,13 +129,13 @@ def fetch_data_and_create_json(file):
                 'search_value': search_value,
                 'card_name': card_name
             }
-            if mana_value:
+            if mana_value is not None:
                 record['mana_value'] = mana_value
             if type_name:
                 record['type'] = type_name
             if subtype_name:
                 record['sub_type'] = subtype_name
-            if power:
+            if power :
                 record['power'] = power
             if toughness:
                 record['toughness'] = toughness

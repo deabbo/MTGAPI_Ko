@@ -61,7 +61,7 @@ function handleResponse(request, obj)
                 fullName = fullName .. " — " .. subType
             end
             if manaValue ~= "" then
-                fullName = fullName .. " " .. manaValue .. " CMC"
+                fullName = fullName .. " " .. manaValue .. "CMC"
             end
             
             -- Set the object's name
