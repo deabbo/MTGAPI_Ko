@@ -8,28 +8,32 @@ def remove_o_in_braces(text):
     """Remove 'o' characters within braces {}."""
     return re.sub(r'\{[^}]*o[^}]*\}', lambda m: m.group(0).replace('o', ''), text)
 
+def replace_html_tags_with_brackets(text):
+    """Replace HTML tags with brackets [] instead of removing them."""
+    return re.sub(r'<[^>]*>', lambda m: f'[{m.group(0)}]', text)
 
-def remove_html_tags(text):
-    """Remove HTML tags and text within them."""
-    return re.sub(r'<[^>]*>', '', text)
+def clean_hash_prefix(text):
+    """Remove the leading '#' from any word starting with '#'."""
+    return re.sub(r'\b#(\S+)', r'\1', text)
 
 def clean_localizations_koKR(cursor, koKR, loc_id):
     """Clean and update the koKR field in the Localizations table."""
     cleaned_koKR = remove_o_in_braces(koKR)
-    cleaned_koKR = remove_html_tags(cleaned_koKR)
+    cleaned_koKR = replace_html_tags_with_brackets(cleaned_koKR)
+    cleaned_koKR = clean_hash_prefix(cleaned_koKR)
     cursor.execute('''
         UPDATE Localizations
         SET koKR = ?
         WHERE LocId = ?
     ''', (cleaned_koKR, loc_id))
 
-def delete_formatted_2(cursor):
+def delete_wrong_value(cursor):
     """Delete rows where Formatted = 2 from the Localizations table."""
     cursor.execute('''
         DELETE FROM Localizations
-        WHERE Formatted = 2
+        WHERE Formatted = 2 or koKR LIKE '#%'
     ''')
-    print("Deleted all rows where Formatted = 2")
+    print("Deleted wrong rows")
 
 def get_localization_value(cursor, loc_id, lang_col):
     """
@@ -48,14 +52,21 @@ def get_localization_value(cursor, loc_id, lang_col):
     result = cursor.fetchone()
     return result[0] if result else None
 
-def process_ability_ids(cursor, ability_ids):
+def process_ability_ids(cursor, ability_ids, subtype_id):
     """
-    Process ability_ids to return a newline-separated string of koKR values.
+    Process ability_ids to return a newline-separated string of koKR values with optional numbering.
+    If ability_ids contains 260, it will be included as-is. Other IDs will be numbered sequentially.
     """
     text_parts = []
-    for ability_id in ability_ids.split(','):
+    ability_id_list = ability_ids.split(',')
+    
+    # Check if 260 is in the list
+    include_260 = '260' in ability_id_list
+    
+    # Create a list of ability parts
+    for idx, ability_id in enumerate(ability_id_list):
         parts = ability_id.split(':')
-        loc_id = parts[-1] 
+        loc_id = parts[-1]  # The part after the last ':'
         
         if len(parts) == 1:
             cursor.execute('''
@@ -69,9 +80,19 @@ def process_ability_ids(cursor, ability_ids):
                 loc_id = text_id
         
         koKR_value = get_localization_value(cursor, loc_id, 'koKR')
+        
         if koKR_value:
-            text_parts.append(koKR_value)
-    
+            if subtype_id == 227020:
+                if ability_id == '260':
+                    text_parts.append(koKR_value)
+                else:
+                    index = ability_id_list.index(ability_id) + 1
+                    if include_260:
+                        index = index - 1
+                    text_parts.append(f"{index} — {koKR_value}")
+            else:
+                text_parts.append(koKR_value)
+                
     return '\n'.join(text_parts)
 
 def fetch_data_and_create_json(file):
@@ -84,7 +105,7 @@ def fetch_data_and_create_json(file):
         cursor = conn.cursor()
 
         # Delete all rows where Formatted = 2
-        delete_formatted_2(cursor)
+        delete_wrong_value(cursor)
         conn.commit()  # Commit the delete changes to the database
 
         # Clean the koKR field in the Localizations table
@@ -106,6 +127,7 @@ def fetch_data_and_create_json(file):
                 c.FlavorTextId AS flavor_text_id,
                 c.abilityIds AS ability_ids
             FROM Cards c
+            WHERE c.GrpId > 10
         ''')
 
         rows = cursor.fetchall()
@@ -121,7 +143,7 @@ def fetch_data_and_create_json(file):
             type_name = get_localization_value(cursor, type_id, 'koKR') if type_id else None
             subtype_name = get_localization_value(cursor, subtype_id, 'koKR') if subtype_id else None
             flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id == '1' else None
-            text = process_ability_ids(cursor, ability_ids) if ability_ids else None
+            text = process_ability_ids(cursor, ability_ids, subtype_id) if ability_ids else None
 
             # Create record
             record = {
@@ -135,7 +157,7 @@ def fetch_data_and_create_json(file):
                 record['type'] = type_name
             if subtype_name:
                 record['sub_type'] = subtype_name
-            if power :
+            if power:
                 record['power'] = power
             if toughness:
                 record['toughness'] = toughness
@@ -145,6 +167,13 @@ def fetch_data_and_create_json(file):
                 record['text'] = text
             
             data.append(record)
+
+        ping_record = {
+            'search_value': 'ping',
+            'text': '성공'
+        }
+
+        data.append(ping_record)
 
         # Write data to JSON file
         with open('cards_data.json', 'w', encoding='utf-8') as f:
