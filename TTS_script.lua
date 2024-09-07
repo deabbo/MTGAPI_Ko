@@ -184,7 +184,7 @@ function applySplitTranslation(obj)
     local data2 = status.data2
 
     if not data1 or not data2 then
-        print("Split translation data missing")
+        print("데이터를 찾지 못함")
         return
     end
 
@@ -198,8 +198,6 @@ function applySplitTranslation(obj)
     local manaValue1 = data1.mana_value or ""
     local manaValue2 = data2.mana_value or ""
     local names = name1 .. "//" .. name2
-
-    print("스플릿카드 번역" .. names)
 
     if subType1 ~= "" then
         typeName1 = typeName1 .. " — " .. subType1
