@@ -38,6 +38,7 @@ function translateObjects()
             end
         end
     end
+    print("번역 완료")
 end
 
 function translateDFC(name, obj)
@@ -131,8 +132,6 @@ function handleResponse(request, obj, version, callback)
                     callback()
                 end
             end
-        else
-            print("번역을 찾지못함: " .. (data.error or "Unknown error"))
         end
     else
         print("서버에 응답이 없습니다.")
