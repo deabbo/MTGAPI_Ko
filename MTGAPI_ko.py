@@ -5,9 +5,8 @@ import json
 api = Flask(__name__)
 
 def load_translations():
-    url = "https://www.dropbox.com/scl/fi/m8gdr8j9v8czp4iqu3aax/cards_data.json?rlkey=paphw5k5ny94lqqh626tbtl0f&st=fenico3q&dl=1"  
+    url = "https://docs.google.com/uc?export=download&id=1GoexoLj7nvLrWwGAHqkluZW8gEF5PRtx&confirm=t"  
     response = requests.get(url)
-
     if response.status_code != 200:
             print(f"Failed to fetch JSON. Status code: {response.status_code}")
             return {}

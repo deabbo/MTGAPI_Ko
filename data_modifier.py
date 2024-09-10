@@ -142,7 +142,7 @@ def fetch_data_and_create_json(file):
             search_value = get_localization_value(cursor, title_id, 'enUS') if title_id else None
             type_name = get_localization_value(cursor, type_id, 'koKR') if type_id else None
             subtype_name = get_localization_value(cursor, subtype_id, 'koKR') if subtype_id else None
-            flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id == '1' else None
+            flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id != '1' else None
             text = process_ability_ids(cursor, ability_ids, subtype_id) if ability_ids else None
 
             # Create record
@@ -176,7 +176,7 @@ def fetch_data_and_create_json(file):
         data.append(ping_record)
 
         # Write data to JSON file
-        with open('cards_data.json', 'w', encoding='utf-8') as f:
+        with open('cards_data_for_api.json', 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
         print(f"Data has been written to cards_data.json")

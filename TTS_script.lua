@@ -2,6 +2,7 @@ local translationStatus = {}
 
 function onLoad()
     -- Begin translation process when the script loads
+    print("번역 시작")
     translateObjects()
 end
 
@@ -38,7 +39,6 @@ function translateObjects()
             end
         end
     end
-    print("번역 완료")
 end
 
 function translateDFC(name, obj)
@@ -140,6 +140,11 @@ end
 
 function applySingleTranslation(obj, data)
     -- Apply translation data for single cards
+
+    if not data or not data.card_name then
+        return
+    end
+
     local name = data.card_name or obj.getName()
     local typeName = data.type or ""
     local subType = data.sub_type or ""
@@ -165,9 +170,13 @@ function applySingleTranslation(obj, data)
     local translatedText = data.text or obj.getDescription()
     local power = data.power or ""
     local toughness = data.toughness or ""
+    local flavorText = data.flavor_text or ""
+
     if power ~= "" and toughness ~= "" then
         translatedText = translatedText .. "\n" .. power .. "/" .. toughness
     end
+
+    translatedText = translatedText .. "[i]" .. flavorText .. "[/i]"
 
     if obj and obj.setDescription then
         obj.setDescription(translatedText)
@@ -183,7 +192,6 @@ function applySplitTranslation(obj)
     local data2 = status.data2
 
     if not data1 or not data2 then
-        print("데이터를 찾지 못함")
         return
     end
 
