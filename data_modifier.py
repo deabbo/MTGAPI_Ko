@@ -53,10 +53,7 @@ def get_localization_value(cursor, loc_id, lang_col):
     return result[0] if result else None
 
 def process_ability_ids(cursor, ability_ids, subtype_id):
-    """
-    Process ability_ids to return a newline-separated string of koKR values with optional numbering.
-    If ability_ids contains 260, it will be included as-is. Other IDs will be numbered sequentially.
-    """
+
     text_parts = []
     ability_id_list = ability_ids.split(',')
     
@@ -66,21 +63,23 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
     # Create a list of ability parts
     for idx, ability_id in enumerate(ability_id_list):
         parts = ability_id.split(':')
+        loyalty_cost = None
         loc_id = parts[-1]  # The part after the last ':'
         
         if len(parts) == 1:
             cursor.execute('''
-                SELECT TextId 
+                SELECT TextId, LoyaltyCost
                 FROM abilities 
                 WHERE Id = ?
             ''', (loc_id,))
             text_id_result = cursor.fetchone()
             if text_id_result:
                 text_id = text_id_result[0]
+                loyalty_cost = text_id_result[1]
                 loc_id = text_id
         
         koKR_value = get_localization_value(cursor, loc_id, 'koKR')
-        
+
         if koKR_value:
             if subtype_id == 227020:
                 if ability_id == '260':
@@ -90,6 +89,9 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
                     if include_260:
                         index = index - 1
                     text_parts.append(f"{index} — {koKR_value}")
+            elif loyalty_cost:
+                koKR_value = loyalty_cost + " : " + koKR_value
+                text_parts.append(koKR_value)
             else:
                 text_parts.append(koKR_value)
                 
