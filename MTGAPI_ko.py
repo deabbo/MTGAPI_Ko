@@ -5,7 +5,7 @@ import json
 api = Flask(__name__)
 
 def load_translations():
-    url = "https://docs.google.com/uc?export=download&id=1GoexoLj7nvLrWwGAHqkluZW8gEF5PRtx&confirm=t"  
+    url = "https://github.com/deabbo/MTGAPI_Ko/raw/main/cards_data_for_api.json"  
     response = requests.get(url)
     if response.status_code != 200:
             print(f"Failed to fetch JSON. Status code: {response.status_code}")
