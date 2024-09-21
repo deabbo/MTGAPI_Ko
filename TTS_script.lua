@@ -1,12 +1,13 @@
 local translationStatus = {}
 
 function onLoad()
-    -- Begin translation process when the script loads
+    -- 오브젝트 로드시
     print("번역 시작")
     translateObjects()
 end
 
 function urlencode(str)
+    -- URL 인코딩
     if str then
         str = string.gsub(str, "\n", "\r\n")
         str = string.gsub(str, "([^%w %-%_%.%~])",
@@ -17,18 +18,23 @@ function urlencode(str)
 end
 
 function hasKorean(text)
-    -- Check if the string contains Korean characters
+    -- 한국어 존재 확인
     return text:find("[%z\1-\127\194-\244][\128-\191]")
 end
 
 function translateObjects()
+    --메인로직
     for _, obj in ipairs(getAllObjects()) do
         if obj then
+            --각 오브젝트마다 이름 가져오기
             local name = obj.getName()
 
+            --한국어 있으면 번역 안함
             if name and name ~= "" and not hasKorean(name) then
+
                 -- DFC 체크
                 if obj.getStateId() ~= -1 then
+                    -- 줄바꿈 이전의 데이터만 다음 함수로 보냄
                     local search_value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
                     translateDFC(search_value, obj)
                 else
@@ -42,41 +48,54 @@ function translateObjects()
 end
 
 function translateDFC(name, obj)
+    --양면카드 로직
+
     local objID = obj.getGUID()
+    -- GUID 기준으로 오브젝트 가져옴
+
     translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
+    --비동기 처리를 위한 변수생성 및 초기화
 
     local function onTranslationDone(version)
         local status = translationStatus[objID]
         if status then
             status.translationCount = status.translationCount + 1
+            --비동기 처리를 위한 번역 횟수 추가 
             if status.translationCount == status.totalTranslations then
-                -- Ensure obj and its state exist
+                -- 1번 상태의 번역이 완료 되었다면 해당 로직 실행
+
                 if obj and obj.setState then
                     obj.setState(2)
                 end
+                -- 오브젝트에 상태가 정상적으로 있는지 검사 후 상태 변경
 
-                -- Iterate and handle state 2 objects
                 for _, obj2 in ipairs(getObjects()) do
                     if obj2 then
                         local name2 = obj2.getName()
                         if name2 and name2 ~= "" and not hasKorean(name2) and obj2.getStateId() == 2 then
                             local search_value2 = name2:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
                             translateSingleOrSplitCard(search_value2, obj2)
+
+                            -- 이 부분에 obj2.setState(1)를 하고 싶은데 에러발생 
                         end
                     end
                 end
+                -- 다시 오브젝트를 가져와서 검사 이후 번역 
+
             end
         end
     end
 
     if obj.getStateId() == 1 then
+        -- 1번상태일때 번역 로직 
         if name:find(" // ") then
-            -- Handle Split/Adventure cards
             local data1, data2 = name:match("^(.-) // (.-)$")
             if data1 and data2 then
                 translationStatus[objID].totalTranslations = 2
+                -- 비동기 처리를 위해 변수 세팅
                 requestTranslation(data1, obj, "data1", function() onTranslationDone("data1") end)
                 requestTranslation(data2, obj, "data2", function() onTranslationDone("data2") end)
+                -- 콜백함수 호출
             end
         else
             -- Single card translation request
@@ -174,6 +193,10 @@ function applySingleTranslation(obj, data)
 
     if power ~= "" and toughness ~= "" then
         translatedText = translatedText .. "\n" .. power .. "/" .. toughness
+    end
+
+    if power == "" and toughness ~= "" then
+        translatedText = translatedText .. "\n" .. "충성도 : " .. toughness
     end
 
     translatedText = translatedText .. "[i]" .. flavorText .. "[/i]"
