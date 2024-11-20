@@ -136,6 +136,8 @@ def fetch_data_and_create_json(file):
 
         # Create JSON data
         data = []
+        seen_search_values = set()
+
         for row in rows:
             (arena_id, title_id, type_id, subtype_id, mana_value, power, toughness, flavor_text_id, ability_ids) = row
 
@@ -147,6 +149,10 @@ def fetch_data_and_create_json(file):
             flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id != '1' else None
             text = process_ability_ids(cursor, ability_ids, subtype_id) if ability_ids else None
 
+            if search_value in seen_search_values:
+                continue
+            seen_search_values.add(search_value)
+            
             # Create record
             record = {
                 'arena_id': arena_id,
