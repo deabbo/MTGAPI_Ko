@@ -5,19 +5,35 @@ import json
 api = Flask(__name__)
 
 def load_translations():
-    url = "https://github.com/deabbo/MTGAPI_Ko/raw/main/cards_data_for_api.json"  
-    response = requests.get(url)
-    if response.status_code != 200:
+    local_file = "cached_translations.json"
+    try:
+        # 파일이 이미 로컬에 있다면 캐시된 데이터를 사용
+        with open(local_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        # 로컬에 없으면 원격에서 가져옴
+        url = "https://github.com/deabbo/MTGAPI_Ko/raw/main/cards_data_for_api.json"  
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; MyAPI/1.0)"
+        }
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code != 200:
             print(f"JSON 파일을 불러오는데 실패했습니다. 에러코드: {response.status_code}")
             return {}
+        
+        try:
+            response.encoding = 'utf-8'
+            data = response.json()
+            # JSON 데이터를 로컬에 저장
+            with open(local_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            return data
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            print(f"Response content: {response.text}")
+            return {}
 
-    try:
-        response.encoding = 'utf-8'
-        return response.json()
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {e}")
-        print(f"Response content: {response.text}")
-        return {}
 
 
 translations = load_translations()
