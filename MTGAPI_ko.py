@@ -8,7 +8,7 @@ def load_translations():
     url = "https://github.com/deabbo/MTGAPI_Ko/raw/main/cards_data_for_api.json"  
     response = requests.get(url)
     if response.status_code != 200:
-            print(f"Failed to fetch JSON. Status code: {response.status_code}")
+            print(f"JSON 파일을 불러오는데 실패했습니다. 에러코드: {response.status_code}")
             return {}
 
     try:
