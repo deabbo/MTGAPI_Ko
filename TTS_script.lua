@@ -199,7 +199,7 @@ function applySingleTranslation(obj, data)
         translatedText = translatedText .. "\n" .. "충성도 : " .. toughness
     end
 
-    translatedText = translatedText .. "[i]" .. flavorText .. "[/i]"
+    translatedText = translatedText .. "\n [sup][i]" .. flavorText .. "[/i][/sup]"
 
     if obj and obj.setDescription then
         obj.setDescription(translatedText)
