@@ -234,7 +234,7 @@ def fetch_data_and_create_json(file):
             subtype_name = get_localization_value(cursor, subtype_id, 'koKR') if subtype_id else None
             flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id != '1' else None
             rarity = None
-            if rarity_number:
+            if rarity_number is not None:
                 if rarity_number == 0:
                     rarity = "미식레어"
                 elif rarity_number == 1:
@@ -243,6 +243,9 @@ def fetch_data_and_create_json(file):
                     rarity = "언커먼"
                 elif rarity_number >= 3:
                     rarity = "커먼"
+            else:
+                rarity = "커먼"
+                
             # Process ability text
             if ability_ids:
                 plain_text, annotationed_text = process_ability_ids(cursor, ability_ids, subtype_id)

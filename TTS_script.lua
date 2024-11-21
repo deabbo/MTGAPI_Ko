@@ -249,6 +249,7 @@ function applySplitTranslation(obj)
     local subType2 = data2.sub_type or ""
     local manaValue1 = data1.mana_value or ""
     local manaValue2 = data2.mana_value or ""
+    local rarity = data1.rarity or ""
     local names = name1 .. "//" .. name2
 
     if subType1 ~= "" then
@@ -304,6 +305,7 @@ function applySplitTranslation(obj)
             obj.setDescription(name1 .. "\n----------\n" .. (translatedText1 or "") .. "\n\n" .. name2 .. "\n----------\n" .. (translatedText2 or ""))
         end
     end
+
     if rarity then
         obj.addTag(rarity)
     end
