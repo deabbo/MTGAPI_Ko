@@ -192,6 +192,7 @@ function applySingleTranslation(obj, data)
     local toughness = data.toughness or ""
     local flavorText = data.flavor_text or ""
     local rarity = data.rarity or ""
+    local color = data.color or ""
 
     if self.getStateId() == 1 then
         if power ~= "" and toughness ~= "" then
@@ -226,6 +227,9 @@ function applySingleTranslation(obj, data)
     if rarity then
         obj.addTag(rarity)
     end
+    if color then
+        obj.addTag(color)
+    end
 end
 
 function applySplitTranslation(obj)
@@ -250,6 +254,7 @@ function applySplitTranslation(obj)
     local manaValue1 = data1.mana_value or ""
     local manaValue2 = data2.mana_value or ""
     local rarity = data1.rarity or ""
+    local color = data1.color or ""
     local names = name1 .. "//" .. name2
 
     if subType1 ~= "" then
@@ -308,6 +313,9 @@ function applySplitTranslation(obj)
 
     if rarity then
         obj.addTag(rarity)
+    end
+    if color then
+        obj.addTag(color)
     end
 end
 

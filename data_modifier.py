@@ -213,7 +213,8 @@ def fetch_data_and_create_json(file):
                 c.Toughness AS toughness,
                 c.FlavorTextId AS flavor_text_id,
                 c.abilityIds AS ability_ids,
-                c.Order_MythicToCommon AS rarity_number                    
+                c.Order_MythicToCommon AS rarity_number,
+                c.Colors AS colors
             FROM Cards c
             WHERE c.GrpId > 10
         ''')
@@ -225,7 +226,7 @@ def fetch_data_and_create_json(file):
         seen_search_values = set()
 
         for row in rows:
-            (arena_id, title_id, type_id, subtype_id, mana_value, power, toughness, flavor_text_id, ability_ids, rarity_number) = row
+            (arena_id, title_id, type_id, subtype_id, mana_value, power, toughness, flavor_text_id, ability_ids, rarity_number, colors) = row
 
             # Find card_name using TitleId
             card_name = get_localization_value(cursor, title_id, 'koKR') if title_id else None
@@ -234,6 +235,8 @@ def fetch_data_and_create_json(file):
             subtype_name = get_localization_value(cursor, subtype_id, 'koKR') if subtype_id else None
             flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id != '1' else None
             rarity = None
+            color = None
+
             if rarity_number is not None:
                 if rarity_number == 0:
                     rarity = "미식레어"
@@ -245,7 +248,28 @@ def fetch_data_and_create_json(file):
                     rarity = "커먼"
             else:
                 rarity = "커먼"
-                
+
+            if colors is not None:
+                color_list = colors.split(',')
+                if len(color_list) > 1:
+                    color = "다색"
+                elif len(color_list) == 1:
+                    color_number = color_list[0]
+                    if color_number == "1":
+                        color = "백색"
+                    elif color_number == "2":
+                        color = "청색"
+                    elif color_number == "3":
+                        color = "흑색"
+                    elif color_number == "4":
+                        color = "적색"
+                    elif color_number == "5":
+                        color = "녹색"
+                else:
+                    color = "무색"
+            else: 
+                color = "무색"
+
             # Process ability text
             if ability_ids:
                 plain_text, annotationed_text = process_ability_ids(cursor, ability_ids, subtype_id)
@@ -261,7 +285,8 @@ def fetch_data_and_create_json(file):
                 'arena_id': arena_id,
                 'search_value': search_value,
                 'card_name': card_name,
-                'rarity': rarity
+                'rarity': rarity,
+                'color': color
             }
             if mana_value is not None:
                 record['mana_value'] = mana_value
