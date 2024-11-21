@@ -191,6 +191,7 @@ function applySingleTranslation(obj, data)
     local power = data.power or ""
     local toughness = data.toughness or ""
     local flavorText = data.flavor_text or ""
+    local rarity = data.rarity or ""
 
     if self.getStateId() == 1 then
         if power ~= "" and toughness ~= "" then
@@ -220,7 +221,11 @@ function applySingleTranslation(obj, data)
         if obj and obj.setDescription then
             obj.setDescription(translatedText)
         end
-
+    end
+    
+    if rarity then
+        obj.addTag(rarity)
+    end
 end
 
 function applySplitTranslation(obj)
@@ -298,6 +303,10 @@ function applySplitTranslation(obj)
         if obj and obj.setDescription then
             obj.setDescription(name1 .. "\n----------\n" .. (translatedText1 or "") .. "\n\n" .. name2 .. "\n----------\n" .. (translatedText2 or ""))
         end
+    end
+    if rarity then
+        obj.addTag(rarity)
+    end
 end
 
 -- "매직 한국어 번역기" is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC

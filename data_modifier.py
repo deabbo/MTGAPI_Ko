@@ -212,7 +212,8 @@ def fetch_data_and_create_json(file):
                 c.Power AS power,
                 c.Toughness AS toughness,
                 c.FlavorTextId AS flavor_text_id,
-                c.abilityIds AS ability_ids
+                c.abilityIds AS ability_ids,
+                c.Order_MythicToCommon AS rarity_number                    
             FROM Cards c
             WHERE c.GrpId > 10
         ''')
@@ -224,7 +225,7 @@ def fetch_data_and_create_json(file):
         seen_search_values = set()
 
         for row in rows:
-            (arena_id, title_id, type_id, subtype_id, mana_value, power, toughness, flavor_text_id, ability_ids) = row
+            (arena_id, title_id, type_id, subtype_id, mana_value, power, toughness, flavor_text_id, ability_ids, rarity_number) = row
 
             # Find card_name using TitleId
             card_name = get_localization_value(cursor, title_id, 'koKR') if title_id else None
@@ -232,7 +233,16 @@ def fetch_data_and_create_json(file):
             type_name = get_localization_value(cursor, type_id, 'koKR') if type_id else None
             subtype_name = get_localization_value(cursor, subtype_id, 'koKR') if subtype_id else None
             flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id != '1' else None
-            
+            rarity = None
+            if rarity_number:
+                if rarity_number == 0:
+                    rarity = "미식레어"
+                elif rarity_number == 1:
+                    rarity = "레어"
+                elif rarity_number == 2:
+                    rarity = "언커먼"
+                elif rarity_number >= 3:
+                    rarity = "커먼"
             # Process ability text
             if ability_ids:
                 plain_text, annotationed_text = process_ability_ids(cursor, ability_ids, subtype_id)
@@ -247,7 +257,8 @@ def fetch_data_and_create_json(file):
             record = {
                 'arena_id': arena_id,
                 'search_value': search_value,
-                'card_name': card_name
+                'card_name': card_name,
+                'rarity': rarity
             }
             if mana_value is not None:
                 record['mana_value'] = mana_value
