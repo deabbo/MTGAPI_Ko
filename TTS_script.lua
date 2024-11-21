@@ -187,23 +187,40 @@ function applySingleTranslation(obj, data)
 
     -- Set description with translated text, power, and toughness
     local translatedText = data.text or obj.getDescription()
+    local annotationedText = data.annotationed_text or obj.getDescription()
     local power = data.power or ""
     local toughness = data.toughness or ""
     local flavorText = data.flavor_text or ""
 
-    if power ~= "" and toughness ~= "" then
-        translatedText = translatedText .. "\n" .. power .. "/" .. toughness
-    end
+    if self.getStateId() == 1 then
+        if power ~= "" and toughness ~= "" then
+            annotationedText = annotationedText .. "\n" .. power .. "/" .. toughness
+        end
 
-    if power == "" and toughness ~= "" then
-        translatedText = translatedText .. "\n" .. "충성도 : " .. toughness
-    end
+        if power == "" and toughness ~= "" then
+            annotationedText = annotationedText .. "\n" .. "충성도 : " .. toughness
+        end
 
-    translatedText = translatedText .. "\n [sup][i]" .. flavorText .. "[/i][/sup]"
+        annotationedText = annotationedText .. "\n [sup][i]" .. flavorText .. "[/i][/sup]"
 
-    if obj and obj.setDescription then
-        obj.setDescription(translatedText)
-    end
+        if obj and obj.setDescription then
+            obj.setDescription(annotationedText)
+        end
+    else
+        if power ~= "" and toughness ~= "" then
+            translatedText = translatedText .. "\n" .. power .. "/" .. toughness
+        end
+
+        if power == "" and toughness ~= "" then
+            translatedText = translatedText .. "\n" .. "충성도 : " .. toughness
+        end
+
+        translatedText = translatedText .. "\n [sup][i]" .. flavorText .. "[/i][/sup]"
+
+        if obj and obj.setDescription then
+            obj.setDescription(translatedText)
+        end
+
 end
 
 function applySplitTranslation(obj)
@@ -248,23 +265,39 @@ function applySplitTranslation(obj)
     end
 
     local translatedText1 = data1.text or obj.getDescription()
+    local annotationedText1 = data1.annotationed_text or obj.getDescription()
     local power1 = data1.power or ""
     local toughness1 = data1.toughness or ""
     local translatedText2 = data2.text or obj.getDescription()
+    local annotationedText2 = data2.annotationed_text or obj.getDescription()
     local power2 = data2.power or ""
     local toughness2 = data2.toughness or ""
 
-    if power1 ~= "" and toughness1 ~= "" then
-        translatedText1 = translatedText1 .. "\n" .. power1 .. "/" .. toughness1
-    end
 
-    if power2 ~= "" and toughness2 ~= "" then
-        translatedText2 = translatedText2 .. "\n" .. power2 .. "/" .. toughness2
-    end
+    if self.getStateId() == 1 then
+        if power1 ~= "" and toughness1 ~= "" then
+            annotationedText1 = annotationedText1 .. "\n" .. power1 .. "/" .. toughness1
+        end
 
-    if obj and obj.setDescription then
-        obj.setDescription(name1 .. "\n----------\n" .. (translatedText1 or "") .. "\n\n" .. name2 .. "\n----------\n" .. (translatedText2 or ""))
-    end
+        if power2 ~= "" and toughness2 ~= "" then
+            annotationedText2 = annotationedText2 .. "\n" .. power2 .. "/" .. toughness2
+        end
+
+        if obj and obj.setDescription then
+            obj.setDescription(name1 .. "\n----------\n" .. (annotationedText1 or "") .. "\n\n" .. name2 .. "\n----------\n" .. (annotationedText2 or ""))
+        end
+    else
+        if power1 ~= "" and toughness1 ~= "" then
+            translatedText1 = translatedText1 .. "\n" .. power1 .. "/" .. toughness1
+        end
+
+        if power2 ~= "" and toughness2 ~= "" then
+            translatedText2 = translatedText2 .. "\n" .. power2 .. "/" .. toughness2
+        end
+
+        if obj and obj.setDescription then
+            obj.setDescription(name1 .. "\n----------\n" .. (translatedText1 or "") .. "\n\n" .. name2 .. "\n----------\n" .. (translatedText2 or ""))
+        end
 end
 
 -- "매직 한국어 번역기" is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC

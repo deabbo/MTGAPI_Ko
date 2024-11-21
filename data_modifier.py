@@ -4,6 +4,73 @@ import json
 import re
 import sys
 
+ANNOTATION_DATA = {}
+
+def load_localization_data():
+    """Load annotation data from the Raw_ClientLocalization_*.mtga file and process koKR text."""
+    global ANNOTATION_DATA
+    localization_files = glob.glob('Raw_ClientLocalization_*.mtga')
+    if not localization_files:
+        print("No localization files found.")
+        return
+    
+    localization_file = localization_files[0]  # Use the first localization file found
+    try:
+        conn = sqlite3.connect(localization_file)
+        cursor = conn.cursor()
+
+        # Select all localization data for AbilityHanger/Keyword
+        cursor.execute('''
+            SELECT Key, koKR 
+            FROM loc
+            WHERE Key LIKE 'AbilityHanger/Keyword/%'
+        ''')
+        rows = cursor.fetchall()
+
+        for key, kokr in rows:
+            if key.endswith('_Body'):
+                key_main = key.replace('_Body', '')
+                cleaned_kokr = process_kokr_text(kokr)
+                ANNOTATION_DATA[key_main] = cleaned_kokr.strip()
+            else:
+                cleaned_kokr = process_kokr_text(kokr)
+                ANNOTATION_DATA[key] = cleaned_kokr.strip()
+                
+
+    except sqlite3.Error as e:
+        print(f"Error reading localization data: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+def process_kokr_text(text):
+    """Process koKR text to replace patterns as specified."""
+    # Replace {abilityCost} with 비용
+    text = re.sub(r'\{abilityCost\}', '비용', text)
+    
+    # Replace {oX} patterns with only the content inside (remove o and braces)
+    text = re.sub(r'\{o([A-Za-z0-9]+)\}', r'\1', text)
+    
+    # Extract name="x?" and replace with the value of ? only
+    text = re.sub(r'<[^>]*name="x([A-Za-z0-9])"[^>]*>', r'\1', text)
+    
+    return text
+
+def clean_ability_name(ability_name):
+    """Clean ability name by removing content inside {} and trimming whitespace."""
+    if ability_name:
+        # Remove content inside {} and trim whitespace
+        cleaned_name = re.sub(r'\{.*?\}', '', ability_name).strip()
+        return cleaned_name
+    return ability_name
+
+def get_ability_annotation(ability_name):
+    """Get annotation for a given ability name."""
+    # Clean the ability name before constructing the key
+    cleaned_name = clean_ability_name(ability_name)
+    key = f"AbilityHanger/Keyword/{cleaned_name}"
+    return ANNOTATION_DATA.get(key)
+
 def remove_o_in_braces(text):
     """Remove 'o' characters within braces {}."""
     return re.sub(r'\{[^}]*o[^}]*\}', lambda m: m.group(0).replace('o', ''), text)
@@ -55,18 +122,20 @@ def get_localization_value(cursor, loc_id, lang_col):
 def process_ability_ids(cursor, ability_ids, subtype_id):
 
     text_parts = []
+    annotationed_parts = []
     ability_id_list = ability_ids.split(',')
     
-    # Check if 260 is in the list
+    # Check if 260 is in the list 미리읽기일 경우 
     include_260 = '260' in ability_id_list
     
     # Create a list of ability parts
     for idx, ability_id in enumerate(ability_id_list):
+
         parts = ability_id.split(':')
         loyalty_cost = None
         loc_id = parts[-1]  # The part after the last ':'
         
-        if len(parts) == 1:
+        if len(parts) == 1: # : 로 나뉘어져있지 않다면 
             cursor.execute('''
                 SELECT TextId, LoyaltyCost
                 FROM abilities 
@@ -78,24 +147,38 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
                 loyalty_cost = text_id_result[1]
                 loc_id = text_id
         
+        enUS_value = get_localization_value(cursor, loc_id, 'enUS')
         koKR_value = get_localization_value(cursor, loc_id, 'koKR')
+        annotation = get_ability_annotation(enUS_value) if enUS_value else None
 
         if koKR_value:
-            if subtype_id == 227020:
-                if ability_id == '260':
+            if subtype_id == 227020:  # 서사시라면
+                if ability_id == '260':  # 미리읽기라면
                     text_parts.append(koKR_value)
+                    annotationed_parts.append(koKR_value)
                 else:
                     index = ability_id_list.index(ability_id) + 1
                     if include_260:
-                        index = index - 1
-                    text_parts.append(f"{index} — {koKR_value}")
-            elif loyalty_cost:
-                koKR_value = loyalty_cost + " : " + koKR_value
-                text_parts.append(koKR_value)
-            else:
-                text_parts.append(koKR_value)
+                        index -= 1
+                    numbered_text = f"{index} — {koKR_value}"
+                    text_parts.append(numbered_text)
+                    annotationed_parts.append(numbered_text)
+            elif loyalty_cost:  # 플레인즈워커라면
+                formatted_text = f"{loyalty_cost} : {koKR_value}"
+                text_parts.append(formatted_text)
+                annotationed_parts.append(formatted_text)
+            else:  # 그 이외 능력일시
+                plain_text = koKR_value
+                annotationed_text = koKR_value
+                if annotation:
+                    annotationed_text += f" [sup][{annotation}][/sup]"
+                text_parts.append(plain_text)
+                annotationed_parts.append(annotationed_text)
                 
-    return '\n'.join(text_parts)
+
+    plain_text = '\n'.join(text_parts)
+    annotationed_text = '\n'.join(annotationed_parts)
+    return plain_text, annotationed_text
 
 def fetch_data_and_create_json(file):
     """Fetch data from the database and create a JSON file."""
@@ -106,6 +189,8 @@ def fetch_data_and_create_json(file):
         conn = sqlite3.connect(file)
         cursor = conn.cursor()
 
+        load_localization_data()
+        
         # Delete all rows where Formatted = 2
         delete_wrong_value(cursor)
         conn.commit()  # Commit the delete changes to the database
@@ -147,7 +232,12 @@ def fetch_data_and_create_json(file):
             type_name = get_localization_value(cursor, type_id, 'koKR') if type_id else None
             subtype_name = get_localization_value(cursor, subtype_id, 'koKR') if subtype_id else None
             flavor_text = get_localization_value(cursor, flavor_text_id, 'koKR') if flavor_text_id and flavor_text_id != '1' else None
-            text = process_ability_ids(cursor, ability_ids, subtype_id) if ability_ids else None
+            
+            # Process ability text
+            if ability_ids:
+                plain_text, annotationed_text = process_ability_ids(cursor, ability_ids, subtype_id)
+            else:
+                plain_text = annotationed_text = None
 
             if search_value in seen_search_values:
                 continue
@@ -171,8 +261,10 @@ def fetch_data_and_create_json(file):
                 record['toughness'] = toughness
             if flavor_text:
                 record['flavor_text'] = flavor_text
-            if text:
-                record['text'] = text
+            if plain_text:
+                record['text'] = plain_text
+            if annotationed_text:
+                record['annotationed_text'] = annotationed_text
             
             data.append(record)
 
@@ -186,7 +278,6 @@ def fetch_data_and_create_json(file):
         # Write data to JSON file
         with open('cards_data_for_api.json', 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-
         print(f"Data has been written to cards_data.json")
 
     except sqlite3.Error as e:
