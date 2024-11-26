@@ -31,7 +31,6 @@ function translateObjects()
 
             --한국어 있으면 번역 안함
             if name and name ~= "" and not hasKorean(name) then
-
                 -- DFC 체크
                 if obj.getStateId() ~= -1 then
                     -- 줄바꿈 이전의 데이터만 다음 함수로 보냄
@@ -42,6 +41,9 @@ function translateObjects()
                     local search_value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
                     translateSingleOrSplitCard(search_value, obj)
                 end
+            else
+                local search_value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
+                getTags(search_value, obj)
             end
         end
     end
@@ -55,6 +57,8 @@ function translateDFC(name, obj)
 
     translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
     --비동기 처리를 위한 변수생성 및 초기화
+
+    local args = "search_value"
 
     local function onTranslationDone(version)
         local status = translationStatus[objID]
@@ -75,8 +79,6 @@ function translateDFC(name, obj)
                         if name2 and name2 ~= "" and not hasKorean(name2) and obj2.getStateId() == 2 then
                             local search_value2 = name2:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
                             translateSingleOrSplitCard(search_value2, obj2)
-
-                            -- 이 부분에 obj2.setState(1)를 하고 싶은데 에러발생 
                         end
                     end
                 end
@@ -93,14 +95,14 @@ function translateDFC(name, obj)
             if data1 and data2 then
                 translationStatus[objID].totalTranslations = 2
                 -- 비동기 처리를 위해 변수 세팅
-                requestTranslation(data1, obj, "data1", function() onTranslationDone("data1") end)
-                requestTranslation(data2, obj, "data2", function() onTranslationDone("data2") end)
+                requestTranslation(data1, obj, "data1", function() onTranslationDone("data1") end, args)
+                requestTranslation(data2, obj, "data2", function() onTranslationDone("data2") end, args)
                 -- 콜백함수 호출
             end
         else
             -- Single card translation request
             translationStatus[objID].totalTranslations = 1
-            requestTranslation(name, obj, "single", function() onTranslationDone("single") end)
+            requestTranslation(name, obj, "single", function() onTranslationDone("single") end, args)
         end
     end
 end
@@ -108,47 +110,52 @@ end
 function translateSingleOrSplitCard(name, obj)
     local objID = obj.getGUID()
     translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
+    local args = "search_value"
 
     if name:find(" // ") then
         -- Handle Split/Adventure cards
         local data1, data2 = name:match("^(.-) // (.-)$")
         if data1 and data2 then
             translationStatus[objID].totalTranslations = 2
-            requestTranslation(data1, obj, "data1", function() applySplitTranslation(obj) end)
-            requestTranslation(data2, obj, "data2", function() applySplitTranslation(obj) end)
+            requestTranslation(data1, obj, "data1", function() applySplitTranslation(obj) end, args)
+            requestTranslation(data2, obj, "data2", function() applySplitTranslation(obj) end, args)
         end
     else
         -- Single card translation request
         translationStatus[objID].totalTranslations = 1
-        requestTranslation(name, obj, "single", function() applySingleTranslation(obj) end)
+        requestTranslation(name, obj, "single", function() applySingleTranslation(obj) end, args)
     end
 end
 
-function requestTranslation(name, obj, version, callback)
-    local url = "https://mtgapi-ko.onrender.com/translate?search_value=" .. urlencode(name)
+function requestTranslation(name, obj, version, callback, args)
+    local url = "https://mtgapi-ko.onrender.com/translate?".. args .."=" .. urlencode(name)
     WebRequest.get(url, function(request)
-        handleResponse(request, obj, version, callback)
+        handleResponse(request, obj, version, callback, args)
     end)
 end
 
-function handleResponse(request, obj, version, callback)
+function handleResponse(request, obj, version, callback, args)
     local objID = obj.getGUID()
     if request.is_done and not request.is_error then
         local data = JSON.decode(request.text)
         if data and not data.error then
             local status = translationStatus[objID]
             if status then
-                if version == "single" then
-                    applySingleTranslation(obj, data)
-                elseif version == "data1" or version == "data2" then
-                    status[version] = data
-                    if status.data1 and status.data2 then
-                        applySplitTranslation(obj)
-                        translationStatus[objID] = nil -- Clear results for next object
+                if args == "search_value"
+                    if version == "single" then
+                        applySingleTranslation(obj, data)
+                    elseif version == "data1" or version == "data2" then
+                        status[version] = data
+                        if status.data1 and status.data2 then
+                            applySplitTranslation(obj)
+                            translationStatus[objID] = nil -- Clear results for next object
+                        end
                     end
-                end
-                if callback then
-                    callback()
+                    if callback then
+                        callback()
+                    end
+                else
+                    applyTags(obj, data)
                 end
             end
         end
@@ -319,4 +326,43 @@ function applySplitTranslation(obj)
     end
 end
 
+function getTags(search_value, obj)
+
+    local objID = obj.getGUID()
+    translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
+    local args = "card_name"
+
+    if name:find(" // ") then
+        -- Handle Split/Adventure cards
+        local data1, data2 = name:match("^(.-) // (.-)$")
+        if data1 and data2 then
+            translationStatus[objID].totalTranslations = 2
+            requestTranslation(data1, obj, "data1", ,function() applySplitTranslation(obj) end, args)
+            requestTranslation(data2, obj, "data2", function() applySplitTranslation(obj) end, args)
+        end
+    else
+        -- Single card translation request
+        translationStatus[objID].totalTranslations = 1
+        requestTranslation(name, obj, "single", function() applySingleTranslation(obj) end, args)
+    end
+
+end
+
+function applyTags(obj, data)
+    -- Apply translation data for single cards
+
+    if not data or not data.card_name then
+        return
+    end
+
+    local rarity = data.rarity or ""
+    local color = data.color or ""
+
+    if rarity then
+        obj.addTag(rarity)
+    end
+    if color then
+        obj.addTag(color)
+    end
+end
 -- "매직 한국어 번역기" is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC

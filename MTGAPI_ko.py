@@ -43,15 +43,22 @@ translations = load_translations()
 def translate():
 
     search_value = request.args.get('search_value')
+    card_name = request.args.get('card_name')
 
-    if not search_value:
+    if not search_value or not card_name:
         return jsonify({"error": "텍스트 입력없음"}), 400
     
     matching_data = None
     for item in translations:
-        if item.get("search_value") == search_value:
-            matching_data = item
-            break
+        if search_value:
+            if item.get("search_value") == search_value:
+                matching_data = item
+                break
+        elif card_name:
+            if item.get("card_name") == card_name:
+                matching_data = item
+                break
+
     
     if matching_data:
         response_data = matching_data  
