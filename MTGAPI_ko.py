@@ -49,14 +49,14 @@ def translate():
 
     # 입력값을 소문자로 변환
     search_value = search_value.lower() if search_value else None
-    card_name = card_name.lower() if card_name else None
+    card_name = card_name if card_name else None
 
     # 데이터 매칭
     matching_data = None
     for item in translations:
         # 데이터의 값을 소문자로 변환
         item_search_value = item.get("search_value", "").lower()
-        item_card_name = item.get("card_name", "").lower()
+        item_card_name = item.get("card_name", "")
 
         if search_value and item_search_value == search_value:
             matching_data = item
