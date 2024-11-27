@@ -39,38 +39,34 @@ def load_translations():
 translations = load_translations()
 
 @api.route('/translate', methods=['GET'])
-
 def translate():
-
     search_value = request.args.get('search_value')
     card_name = request.args.get('card_name')
 
-    if (not search_value) or (not card_name):
+    # 입력값 검증: 둘 다 없을 때만 에러 반환
+    if not search_value and not card_name:
         return jsonify({"error": "텍스트 입력없음"}), 400
-    
+
+    # 데이터 매칭
     matching_data = None
     for item in translations:
-        if search_value:
-            if item.get("search_value") == search_value:
-                matching_data = item
-                break
-        elif card_name:
-            if item.get("card_name") == card_name:
-                matching_data = item
-                break
+        if search_value and item.get("search_value") == search_value:
+            matching_data = item
+            break
+        elif card_name and item.get("card_name") == card_name:
+            matching_data = item
+            break
 
-    
+    # 결과 반환
     if matching_data:
-        response_data = matching_data  
+        response_data = matching_data
     else:
         response_data = {"error": "카드를 찾을 수 없습니다."}
 
-    response = Response(
+    return Response(
         response=json.dumps(response_data, ensure_ascii=False),
         mimetype='application/json'
     )
-    
-    return response
 
 
 if __name__ == '__main__':
