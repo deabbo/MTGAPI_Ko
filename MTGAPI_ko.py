@@ -47,13 +47,21 @@ def translate():
     if not search_value and not card_name:
         return jsonify({"error": "텍스트 입력없음"}), 400
 
+    # 입력값을 소문자로 변환
+    search_value = search_value.lower() if search_value else None
+    card_name = card_name.lower() if card_name else None
+
     # 데이터 매칭
     matching_data = None
     for item in translations:
-        if search_value and item.get("search_value") == search_value:
+        # 데이터의 값을 소문자로 변환
+        item_search_value = item.get("search_value", "").lower()
+        item_card_name = item.get("card_name", "").lower()
+
+        if search_value and item_search_value == search_value:
             matching_data = item
             break
-        elif card_name and item.get("card_name") == card_name:
+        elif card_name and item_card_name == card_name:
             matching_data = item
             break
 
@@ -67,6 +75,7 @@ def translate():
         response=json.dumps(response_data, ensure_ascii=False),
         mimetype='application/json'
     )
+
 
 
 if __name__ == '__main__':
