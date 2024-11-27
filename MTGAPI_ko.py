@@ -45,7 +45,7 @@ def translate():
     search_value = request.args.get('search_value')
     card_name = request.args.get('card_name')
 
-    if not search_value or not card_name:
+    if (not search_value) or (not card_name):
         return jsonify({"error": "텍스트 입력없음"}), 400
     
     matching_data = None
