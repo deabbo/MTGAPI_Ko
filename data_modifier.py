@@ -3,6 +3,7 @@ import glob
 import json
 import re
 import sys
+import string
 
 ANNOTATION_DATA = {}
 
@@ -32,9 +33,16 @@ def load_localization_data():
                 key_main = key.replace('_Body', '')
                 cleaned_kokr = process_kokr_text(kokr)
                 ANNOTATION_DATA[key_main] = cleaned_kokr.strip()
+                # Add a key with whitespace removed
+                whitespace_removed_key = re.sub(r'\s+', '', key_main)
+                ANNOTATION_DATA[whitespace_removed_key] = cleaned_kokr.strip()
             else:
                 cleaned_kokr = process_kokr_text(kokr)
                 ANNOTATION_DATA[key] = cleaned_kokr.strip()
+                # Add a key with whitespace removed
+                whitespace_removed_key = re.sub(r'\s+', '', key)
+                ANNOTATION_DATA[whitespace_removed_key] = cleaned_kokr.strip()
+
                 
 
     except sqlite3.Error as e:
@@ -57,19 +65,22 @@ def process_kokr_text(text):
     return text
 
 def clean_ability_name(ability_name):
-    """Clean ability name by removing content inside {} and trimming whitespace."""
-    if ability_name:
-        # Remove content inside {} and trim whitespace
-        cleaned_name = re.sub(r'\{.*?\}', '', ability_name).strip()
-        return cleaned_name
-    return ability_name
+    """Remove content inside {}, trim whitespace, and remove punctuation."""
+    # Remove content inside {} and trim whitespace
+    cleaned_name = ability_name.split("{")[0].strip()
+    # Remove punctuation
+    cleaned_name = cleaned_name.translate(str.maketrans("", "", string.punctuation))
+    return cleaned_name
 
 def get_ability_annotation(ability_name):
     """Get annotation for a given ability name."""
-    # Clean the ability name before constructing the key
+    # Clean the ability name by removing punctuation and whitespace
     cleaned_name = clean_ability_name(ability_name)
-    key = f"AbilityHanger/Keyword/{cleaned_name}"
-    return ANNOTATION_DATA.get(key)
+    key_with_spaces = f"AbilityHanger/Keyword/{cleaned_name}"
+    key_without_spaces = f"AbilityHanger/Keyword/{cleaned_name.replace(' ', '')}"
+    
+    # Check both versions of the key in ANNOTATION_DATA
+    return ANNOTATION_DATA.get(key_with_spaces) or ANNOTATION_DATA.get(key_without_spaces)
 
 def remove_o_in_braces(text):
     """Remove 'o' characters within braces {}."""

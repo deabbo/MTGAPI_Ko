@@ -29,27 +29,26 @@ function translateObjects()
             --각 오브젝트마다 이름 가져오기
             local name = obj.getName()
 
-            --한국어 있으면 번역 안함
-            if name and name ~= "" and not hasKorean(name) then
-                -- DFC 체크
-                if obj.getStateId() ~= -1 then
-                    -- 줄바꿈 이전의 데이터만 다음 함수로 보냄
-                    local search_value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
-                    translateDFC(search_value, obj)
-                else
-                    -- Single 카드와 Split 카드 처리
-                    local search_value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
-                    translateSingleOrSplitCard(search_value, obj)
+            --한국어 여부따라 argument 설정
+            if name and name ~= "" then
+                if not hasKorean(name) then
+                    -- DFC 체크
+                    if obj.getStateId() ~= -1 then
+                        -- 줄바꿈 이전의 데이터만 다음 함수로 보냄
+                        local value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
+                        translateDFC(value, obj, "search_value")
+                    else
+                        -- Single 카드와 Split 카드 처리
+                        local value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
+                        translateSingleOrSplitCard(value, obj, "search_value")
+                    end
                 end
-            else
-                local search_value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
-                getTags(search_value, obj)
             end
         end
     end
 end
 
-function translateDFC(name, obj)
+function translateDFC(name, obj, args)
     --양면카드 로직
 
     local objID = obj.getGUID()
@@ -57,8 +56,6 @@ function translateDFC(name, obj)
 
     translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
     --비동기 처리를 위한 변수생성 및 초기화
-
-    local args = "search_value"
 
     local function onTranslationDone(version)
         local status = translationStatus[objID]
@@ -107,10 +104,9 @@ function translateDFC(name, obj)
     end
 end
 
-function translateSingleOrSplitCard(name, obj)
+function translateSingleOrSplitCard(name, obj, args)
     local objID = obj.getGUID()
     translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
-    local args = "search_value"
 
     if name:find(" // ") then
         -- Handle Split/Adventure cards
@@ -130,32 +126,28 @@ end
 function requestTranslation(name, obj, version, callback, args)
     local url = "https://mtgapi-ko.onrender.com/translate?".. args .."=" .. urlencode(name)
     WebRequest.get(url, function(request)
-        handleResponse(request, obj, version, callback, args)
+        handleResponse(request, obj, version, callback)
     end)
 end
 
-function handleResponse(request, obj, version, callback, args)
+function handleResponse(request, obj, version, callback)
     local objID = obj.getGUID()
     if request.is_done and not request.is_error then
         local data = JSON.decode(request.text)
         if data and not data.error then
             local status = translationStatus[objID]
             if status then
-                if args == "search_value"
-                    if version == "single" then
-                        applySingleTranslation(obj, data)
-                    elseif version == "data1" or version == "data2" then
-                        status[version] = data
-                        if status.data1 and status.data2 then
-                            applySplitTranslation(obj)
-                            translationStatus[objID] = nil -- Clear results for next object
-                        end
+                if version == "single" then
+                    applySingleTranslation(obj, data)
+                elseif version == "data1" or version == "data2" then
+                    status[version] = data
+                    if status.data1 and status.data2 then
+                        applySplitTranslation(obj)
+                        translationStatus[objID] = nil -- Clear results for next object
                     end
-                    if callback then
-                        callback()
-                    end
-                else
-                    applyTags(obj, data)
+                end
+                if callback then
+                    callback()
                 end
             end
         end
@@ -326,43 +318,4 @@ function applySplitTranslation(obj)
     end
 end
 
-function getTags(search_value, obj)
-
-    local objID = obj.getGUID()
-    translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
-    local args = "card_name"
-
-    if name:find(" // ") then
-        -- Handle Split/Adventure cards
-        local data1, data2 = name:match("^(.-) // (.-)$")
-        if data1 and data2 then
-            translationStatus[objID].totalTranslations = 2
-            requestTranslation(data1, obj, "data1", ,function() applySplitTranslation(obj) end, args)
-            requestTranslation(data2, obj, "data2", function() applySplitTranslation(obj) end, args)
-        end
-    else
-        -- Single card translation request
-        translationStatus[objID].totalTranslations = 1
-        requestTranslation(name, obj, "single", function() applySingleTranslation(obj) end, args)
-    end
-
-end
-
-function applyTags(obj, data)
-    -- Apply translation data for single cards
-
-    if not data or not data.card_name then
-        return
-    end
-
-    local rarity = data.rarity or ""
-    local color = data.color or ""
-
-    if rarity then
-        obj.addTag(rarity)
-    end
-    if color then
-        obj.addTag(color)
-    end
-end
 -- "매직 한국어 번역기" is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC
