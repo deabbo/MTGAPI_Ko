@@ -32,16 +32,16 @@ def load_localization_data():
             if key.endswith('_Body'):
                 key_main = key.replace('_Body', '')
                 cleaned_kokr = process_kokr_text(kokr)
-                ANNOTATION_DATA[key_main] = cleaned_kokr.strip()
+                ANNOTATION_DATA[key_main.lower()] = cleaned_kokr.strip()
                 # Add a key with whitespace removed
                 whitespace_removed_key = re.sub(r'\s+', '', key_main)
-                ANNOTATION_DATA[whitespace_removed_key] = cleaned_kokr.strip()
+                ANNOTATION_DATA[whitespace_removed_key.lower()] = cleaned_kokr.strip()
             else:
                 cleaned_kokr = process_kokr_text(kokr)
-                ANNOTATION_DATA[key] = cleaned_kokr.strip()
+                ANNOTATION_DATA[key.lower()] = cleaned_kokr.strip()
                 # Add a key with whitespace removed
                 whitespace_removed_key = re.sub(r'\s+', '', key)
-                ANNOTATION_DATA[whitespace_removed_key] = cleaned_kokr.strip()
+                ANNOTATION_DATA[whitespace_removed_key.lower()] = cleaned_kokr.strip()
 
                 
 
@@ -65,19 +65,21 @@ def process_kokr_text(text):
     return text
 
 def clean_ability_name(ability_name):
-    """Remove content inside {}, trim whitespace, and remove punctuation."""
+    """Remove content inside {}, trim whitespace, remove punctuation, and convert to lowercase."""
     # Remove content inside {} and trim whitespace
     cleaned_name = ability_name.split("{")[0].strip()
     # Remove punctuation
     cleaned_name = cleaned_name.translate(str.maketrans("", "", string.punctuation))
+    # Convert to lowercase
+    cleaned_name = cleaned_name.lower()
     return cleaned_name
 
 def get_ability_annotation(ability_name):
     """Get annotation for a given ability name."""
     # Clean the ability name by removing punctuation and whitespace
     cleaned_name = clean_ability_name(ability_name)
-    key_with_spaces = f"AbilityHanger/Keyword/{cleaned_name}"
-    key_without_spaces = f"AbilityHanger/Keyword/{cleaned_name.replace(' ', '')}"
+    key_with_spaces = f"AbilityHanger/Keyword/{cleaned_name}".lower()
+    key_without_spaces = f"AbilityHanger/Keyword/{cleaned_name.replace(' ', '')}".lower()
     
     # Check both versions of the key in ANNOTATION_DATA
     return ANNOTATION_DATA.get(key_with_spaces) or ANNOTATION_DATA.get(key_without_spaces)
