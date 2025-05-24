@@ -36,10 +36,12 @@ function translateObjects()
                     if obj.getStateId() ~= -1 then
                         -- 줄바꿈 이전의 데이터만 다음 함수로 보냄
                         local value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
+                        -- print("DFC 카드")
                         translateDFC(value, obj, "search_value")
                     else
                         -- Single 카드와 Split 카드 처리
                         local value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
+                        -- print("일반 카드")
                         translateSingleOrSplitCard(value, obj, "search_value")
                     end
                 end
@@ -50,7 +52,7 @@ end
 
 function translateDFC(name, obj, args)
     --양면카드 로직
-
+    -- print("translateDFC 호출됨")
     local objID = obj.getGUID()
     -- GUID 기준으로 오브젝트 가져옴
 
@@ -58,6 +60,7 @@ function translateDFC(name, obj, args)
     --비동기 처리를 위한 변수생성 및 초기화
 
     local function onTranslationDone(version)
+        -- print("onTranslationDone 호출됨".. tostring(version))
         local status = translationStatus[objID]
         if status then
             status.translationCount = status.translationCount + 1
@@ -67,20 +70,24 @@ function translateDFC(name, obj, args)
 
                 if obj and obj.setState then
                     obj.setState(2)
+                    -- print("[DFC] Switching to state 2...")
                 end
                 -- 오브젝트에 상태가 정상적으로 있는지 검사 후 상태 변경
 
                 for _, obj2 in ipairs(getObjects()) do
                     if obj2 then
+                        local currentGUID = obj2.getGUID()
                         local name2 = obj2.getName()
+                        -- print("[DFC] After state switch, GUID: " .. tostring(currentGUID))
+                        -- print("뒷면이름 : " .. tostring(name2))
                         if name2 and name2 ~= "" and not hasKorean(name2) and obj2.getStateId() == 2 then
                             local search_value2 = name2:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
-                            translateSingleOrSplitCard(search_value2, obj2)
+                            -- print("검색이름" .. tostring(search_value2))
+                            translateSingleOrSplitCard(search_value2, obj2, "search_value")
                         end
                     end
                 end
                 -- 다시 오브젝트를 가져와서 검사 이후 번역 
-
             end
         end
     end
@@ -125,6 +132,7 @@ end
 
 function requestTranslation(name, obj, version, callback, args)
     local url = "https://mtgapi-ko.onrender.com/translate?".. args .."=" .. urlencode(name)
+    -- print("요청URL"..tostring(url))
     WebRequest.get(url, function(request)
         handleResponse(request, obj, version, callback)
     end)
@@ -193,7 +201,7 @@ function applySingleTranslation(obj, data)
     local rarity = data.rarity or ""
     local color = data.color or ""
 
-    if self.getStateId() == 1 then
+    if obj.getStateId() == 1 then
         if power ~= "" and toughness ~= "" then
             annotationedText = annotationedText .. "\n" .. power .. "/" .. toughness
         end
@@ -284,7 +292,7 @@ function applySplitTranslation(obj)
     local toughness2 = data2.toughness or ""
 
 
-    if self.getStateId() == 1 then
+    if obj.getStateId() == 1 then
         if power1 ~= "" and toughness1 ~= "" then
             annotationedText1 = annotationedText1 .. "\n" .. power1 .. "/" .. toughness1
         end

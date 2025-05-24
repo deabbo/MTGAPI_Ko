@@ -36,12 +36,14 @@ def load_localization_data():
                 # Add a key with whitespace removed
                 whitespace_removed_key = re.sub(r'\s+', '', key_main)
                 ANNOTATION_DATA[whitespace_removed_key.lower()] = cleaned_kokr.strip()
+                # print(f"메인 키 {key_main}, {cleaned_kokr.strip()}")
             else:
                 cleaned_kokr = process_kokr_text(kokr)
                 ANNOTATION_DATA[key.lower()] = cleaned_kokr.strip()
                 # Add a key with whitespace removed
                 whitespace_removed_key = re.sub(r'\s+', '', key)
                 ANNOTATION_DATA[whitespace_removed_key.lower()] = cleaned_kokr.strip()
+                # print(f"내용 {key}, {cleaned_kokr.strip()}")
 
                 
 
@@ -54,7 +56,7 @@ def load_localization_data():
 def process_kokr_text(text):
     """Process koKR text to replace patterns as specified."""
     # Replace {abilityCost} with 비용
-    text = re.sub(r'\{abilityCost\}', '비용', text)
+    text = re.sub(r'\s*,?\s*\{abilityCost\}\s*,?\s*', '', text)
     
     # Replace {oX} patterns with only the content inside (remove o and braces)
     text = re.sub(r'\{o([A-Za-z0-9]+)\}', r'\1', text)
@@ -65,24 +67,47 @@ def process_kokr_text(text):
     return text
 
 def clean_ability_name(ability_name):
-    """Remove content inside {}, trim whitespace, remove punctuation, and convert to lowercase."""
-    # Remove content inside {} and trim whitespace
-    cleaned_name = ability_name.split("{")[0].strip()
-    # Remove punctuation
-    cleaned_name = cleaned_name.translate(str.maketrans("", "", string.punctuation))
-    # Convert to lowercase
-    cleaned_name = cleaned_name.lower()
-    return cleaned_name
+    """
+    Remove trailing numerals or X, trim whitespace, keep {} templates,
+    remove most punctuation, and convert to lowercase.
+    """
+    # Remove trailing space + number or X
+    cleaned_name = re.sub(r'\s+(\d+|x)$', '', ability_name.strip(), flags=re.IGNORECASE)
+    
+    # Remove punctuation except {}
+    cleaned_name = re.sub(r'[^\w\s{}]', '', cleaned_name)
+
+    return cleaned_name.lower()
 
 def get_ability_annotation(ability_name):
-    """Get annotation for a given ability name."""
-    # Clean the ability name by removing punctuation and whitespace
     cleaned_name = clean_ability_name(ability_name)
-    key_with_spaces = f"AbilityHanger/Keyword/{cleaned_name}".lower()
-    key_without_spaces = f"AbilityHanger/Keyword/{cleaned_name.replace(' ', '')}".lower()
-    
-    # Check both versions of the key in ANNOTATION_DATA
-    return ANNOTATION_DATA.get(key_with_spaces) or ANNOTATION_DATA.get(key_without_spaces)
+
+    # 비용 포함 형태: 예) "ninjutsu {3BB}" → ability = "ninjutsu", cost = "{3BB}"
+    ability_match = re.match(r'(\w+)\s+\{([^}]+)\}', ability_name)
+    if ability_match:
+        keyword = ability_match.group(1).lower()
+        cost = ability_match.group(2)
+        
+        # 비용에서 'o' 제거 (예: o3BB -> 3BB)
+        cost = remove_o_in_braces('{' + cost + '}').strip('{}')
+
+        body_key = f"AbilityHanger/Keyword/{keyword}".lower()
+        body = ANNOTATION_DATA.get(body_key)
+
+        if body:
+            # 비용 + 설명 (비용은 비용 문자열만, 쉼표 하나만)
+            return f"{cost}, {body}"
+
+    # 일반 키워드 처리
+    base_key = f"AbilityHanger/Keyword/{cleaned_name}".lower()
+    no_space_key = f"AbilityHanger/Keyword/{cleaned_name.replace(' ', '')}".lower()
+    if base_key in ANNOTATION_DATA:
+        return ANNOTATION_DATA[base_key]
+    if no_space_key in ANNOTATION_DATA:
+        return ANNOTATION_DATA[no_space_key]
+
+    return None
+
 
 def remove_o_in_braces(text):
     """Remove 'o' characters within braces {}."""
