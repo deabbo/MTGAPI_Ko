@@ -55,6 +55,7 @@ function translateDFC(name, obj, args)
     -- print("translateDFC 호출됨")
     local objID = obj.getGUID()
     -- GUID 기준으로 오브젝트 가져옴
+    local alreadyProcessed = {}
 
     translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
     --비동기 처리를 위한 변수생성 및 초기화
@@ -76,14 +77,30 @@ function translateDFC(name, obj, args)
 
                 for _, obj2 in ipairs(getObjects()) do
                     if obj2 then
-                        local currentGUID = obj2.getGUID()
+                        local guid = obj2.getGUID()
                         local name2 = obj2.getName()
-                        -- print("[DFC] After state switch, GUID: " .. tostring(currentGUID))
-                        -- print("뒷면이름 : " .. tostring(name2))
-                        if name2 and name2 ~= "" and not hasKorean(name2) and obj2.getStateId() == 2 then
+
+                        if not alreadyProcessed[guid]
+                            and name2 and name2 ~= ""
+                            and not hasKorean(name2)
+                            and obj2.getStateId() == 2 then
+
+                            alreadyProcessed[guid] = true
+
                             local search_value2 = name2:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
-                            -- print("검색이름" .. tostring(search_value2))
                             translateSingleOrSplitCard(search_value2, obj2, "search_value")
+
+                            if obj2 and obj2.setState and obj2.getStates then
+                                local states = obj2.getStates()
+                                if states and (states["1"] or states[1]) then
+                                    Wait.time(function()
+                                        local safeStates = obj2.getStates()
+                                        if safeStates and (safeStates["1"] or safeStates[1]) then
+                                            obj2.setState(1)
+                                        end
+                                    end, 3)
+                                end
+                            end
                         end
                     end
                 end
@@ -201,7 +218,7 @@ function applySingleTranslation(obj, data)
     local rarity = data.rarity or ""
     local color = data.color or ""
 
-    if obj.getStateId() == 1 then
+    if self.getStateId() == 1 then
         if power ~= "" and toughness ~= "" then
             annotationedText = annotationedText .. "\n" .. power .. "/" .. toughness
         end
@@ -292,7 +309,7 @@ function applySplitTranslation(obj)
     local toughness2 = data2.toughness or ""
 
 
-    if obj.getStateId() == 1 then
+    if self.getStateId() == 1 then
         if power1 ~= "" and toughness1 ~= "" then
             annotationedText1 = annotationedText1 .. "\n" .. power1 .. "/" .. toughness1
         end

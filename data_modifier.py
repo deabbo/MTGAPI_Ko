@@ -7,6 +7,33 @@ import string
 
 ANNOTATION_DATA = {}
 
+# annotation_data 딕셔너리 전체를 출력하는 디버깅 코드 예시
+
+# def debug_print_annotation_data(annotation_data, filename="annotation_debug_log.txt"):
+#     with open(filename, 'w', encoding='utf-8') as f:
+#         f.write("[DEBUG] Annotation Data Dump:\n\n")
+#         for key, value in annotation_data.items():
+#             f.write(f"Key: {key}\n")
+#             # value가 str인 경우
+#             if isinstance(value, str):
+#                 f.write(f"  koKR: {value}\n\n")
+#             # value가 dict인 경우
+#             elif isinstance(value, dict):
+#                 en_text = value.get("enUS", "<no enUS>")
+#                 ko_text = value.get("koKR", "<no koKR>")
+#                 f.write(f"  enUS: {en_text}\n")
+#                 f.write(f"  koKR: {ko_text}\n\n")
+#             else:
+#                 f.write(f"  Value: {value}\n\n")
+#     print(f"Annotation data dumped to {filename}")
+
+
+
+# 사용 예시
+# debug_print_annotation_data(annotation_data)
+
+# 위 코드를 실제 실행 위치에서 호출하여 annotation_data 내용을 확인하세요.
+
 def load_localization_data():
     """Load annotation data from the Raw_ClientLocalization_*.mtga file and process koKR text."""
     global ANNOTATION_DATA
@@ -29,29 +56,28 @@ def load_localization_data():
         rows = cursor.fetchall()
 
         for key, kokr in rows:
-            if key.endswith('_Body'):
-                key_main = key.replace('_Body', '')
-                cleaned_kokr = process_kokr_text(kokr)
-                ANNOTATION_DATA[key_main.lower()] = cleaned_kokr.strip()
-                # Add a key with whitespace removed
-                whitespace_removed_key = re.sub(r'\s+', '', key_main)
-                ANNOTATION_DATA[whitespace_removed_key.lower()] = cleaned_kokr.strip()
-                # print(f"메인 키 {key_main}, {cleaned_kokr.strip()}")
-            else:
-                cleaned_kokr = process_kokr_text(kokr)
-                ANNOTATION_DATA[key.lower()] = cleaned_kokr.strip()
-                # Add a key with whitespace removed
-                whitespace_removed_key = re.sub(r'\s+', '', key)
-                ANNOTATION_DATA[whitespace_removed_key.lower()] = cleaned_kokr.strip()
-                # print(f"내용 {key}, {cleaned_kokr.strip()}")
+            cleaned_kokr = process_kokr_text(kokr)
 
-                
+            # Strip suffixes like _Body, digits, and letters from the end of key base
+            base_key = key.replace('_Body', '')
+            base_key = re.sub(r'[\dA-Z_]+$', '', base_key)
+            normalized_key = base_key.lower()
+            no_space_key = re.sub(r'\s+', '', normalized_key)
+
+            # Store under multiple normalized forms
+            for k in {normalized_key, no_space_key}:
+                if k not in ANNOTATION_DATA:
+                    ANNOTATION_DATA[k] = cleaned_kokr.strip()
 
     except sqlite3.Error as e:
         print(f"Error reading localization data: {e}")
     finally:
         if conn:
             conn.close()
+    
+    # debug_print_annotation_data(ANNOTATION_DATA)
+
+
 
 def process_kokr_text(text):
     """Process koKR text to replace patterns as specified."""
@@ -87,14 +113,17 @@ def get_ability_annotation(ability_name):
     if ability_match:
         keyword = ability_match.group(1).lower()
         cost = ability_match.group(2)
-        
+
         # 비용에서 'o' 제거 (예: o3BB -> 3BB)
         cost = remove_o_in_braces('{' + cost + '}').strip('{}')
 
+        # 주석용 키 정규화
         body_key = f"AbilityHanger/Keyword/{keyword}".lower()
         body = ANNOTATION_DATA.get(body_key)
 
         if body:
+            # 주석 본문에서 'o'가 들어간 부분 제거
+            body = re.sub(r'o(?=[A-Z0-9])', '', body)
             # 비용 + 설명 (비용은 비용 문자열만, 쉼표 하나만)
             return f"{cost}, {body}"
 
@@ -102,11 +131,16 @@ def get_ability_annotation(ability_name):
     base_key = f"AbilityHanger/Keyword/{cleaned_name}".lower()
     no_space_key = f"AbilityHanger/Keyword/{cleaned_name.replace(' ', '')}".lower()
     if base_key in ANNOTATION_DATA:
-        return ANNOTATION_DATA[base_key]
+        annotation = ANNOTATION_DATA[base_key]
+        annotation = re.sub(r'o(?=[A-Z0-9])', '', annotation)
+        return annotation
     if no_space_key in ANNOTATION_DATA:
-        return ANNOTATION_DATA[no_space_key]
+        annotation = ANNOTATION_DATA[no_space_key]
+        annotation = re.sub(r'o(?=[A-Z0-9])', '', annotation)
+        return annotation
 
     return None
+
 
 
 def remove_o_in_braces(text):
@@ -156,6 +190,32 @@ def get_localization_value(cursor, loc_id, lang_col):
     
     result = cursor.fetchone()
     return result[0] if result else None
+
+def annotate_inline_keywords(text: str) -> str:
+    if not text:
+        return text
+
+    annotated_keywords = set()
+
+    for keyword_en, annotation in ANNOTATION_DATA.items():
+        base_keyword = re.sub(r'\W+', '', keyword_en.lower())
+
+        # 키워드가 포함된 단어들까지 포괄적으로 감지 (예: 'mobilize 2', 'gains mobilize 2')
+        pattern = re.compile(rf'(?<!\w)({keyword_en}\s*\d*)(?!\w)', re.IGNORECASE)
+
+        def replacer(match):
+            full_keyword = match.group(1)
+            keyword_part = full_keyword.split()[0]  # mobilize
+            key_base = re.sub(r'\W+', '', keyword_part.lower())
+
+            if key_base == base_keyword and key_base not in annotated_keywords:
+                annotated_keywords.add(key_base)
+                return f"{full_keyword} ({annotation})"
+            return full_keyword
+
+        text = pattern.sub(replacer, text)
+
+    return text
 
 def process_ability_ids(cursor, ability_ids, subtype_id):
 
@@ -210,6 +270,8 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
                 annotationed_text = koKR_value
                 if annotation:
                     annotationed_text += f" [sup][{annotation}][/sup]"
+                annotationed_text = annotate_inline_keywords(annotationed_text)
+
                 text_parts.append(plain_text)
                 annotationed_parts.append(annotationed_text)
                 
@@ -221,7 +283,7 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
 def fetch_data_and_create_json(file):
     """Fetch data from the database and create a JSON file."""
     print(f"Processing file: {file}")
-
+    
     try:
         # Connect to the database
         conn = sqlite3.connect(file)
