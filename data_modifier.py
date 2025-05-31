@@ -20,6 +20,7 @@ ANNOTATION_DATA = {}
 #             # value가 dict인 경우
 #             elif isinstance(value, dict):
 #                 en_text = value.get("enUS", "<no enUS>")
+
 #                 ko_text = value.get("koKR", "<no koKR>")
 #                 f.write(f"  enUS: {en_text}\n")
 #                 f.write(f"  koKR: {ko_text}\n\n")
