@@ -82,7 +82,7 @@ def replace_sprite_tags(text):
         if name in {"{manaType0}"}:
             return "좌측 배경색의 유색마나"
 
-        if name in {"{manaType2}"}:
+        if name in {"{manaType1}"}:
             return "우측 배경색의 유색마나"
         
         # 혼합 피렉시아 마나
@@ -230,10 +230,10 @@ def build_annotation_dictionary_from_file():
             conn.close()
     
 
-def get_ability_annotation(ability_name):
+def get_ability_annotation(ability_name, used_cores: set):
     cleaned_name = clean_ability_name_for_matching(ability_name)
 
-    # Step 1: title 매칭 → index 기준으로 바로 앞 body를 가져오기
+    # Step 1: title 매칭
     for core, data in ANNOTATION_DATA_DETAILED.items():
         variants = data["variants"]
         for idx, variant in enumerate(variants):
@@ -242,28 +242,38 @@ def get_ability_annotation(ability_name):
                 cleaned_title = re.sub(r'\s+', '', title_en)
 
                 if cleaned_title and cleaned_title in cleaned_name:
-                    # 정확한 짝: title의 바로 앞 index에 있는 body
+                    # ✅ core 중복 체크는 여기서만!
+                    if core in used_cores:
+                        return None
+
+                    # 정상: title 매칭 → 바로 앞의 body 사용
                     if idx > 0 and variants[idx - 1]["type"] == "body":
                         body_koKR = variants[idx - 1]["koKR"]
                         if body_koKR:
+                            used_cores.add(core)
                             return body_koKR
 
-                    # fallback (혹시 잘못된 순서가 있다면)
+                    # fallback: 아무 body라도
                     for j in range(len(variants)):
                         if variants[j]["type"] == "body" and variants[j]["koKR"]:
+                            used_cores.add(core)
                             return variants[j]["koKR"]
 
     # Step 2: core 키워드 매칭
     for core, data in ANNOTATION_DATA_DETAILED.items():
         if core in cleaned_name:
+            if core in used_cores:
+                return None
             body_entry = next(
                 (v for v in data["variants"] if v["type"] == "body" and v["koKR"]),
                 None
             )
             if body_entry:
+                used_cores.add(core)
                 return body_entry["koKR"]
 
     return None
+
 
 
 
@@ -362,7 +372,7 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
     text_parts = []
     annotationed_parts = []
     ability_id_list = ability_ids.split(',')
-    
+    used_cores = set()
     # Check if 260 is in the list 미리읽기일 경우 
     is_prelude_first = ability_id_list and ability_id_list[0].split(':')[-1] == '614628'
     
@@ -383,7 +393,7 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
         
         enUS_value = get_localization_value(cursor, loc_id, 'enUS')
         koKR_value = get_localization_value(cursor, loc_id, 'koKR')
-        annotation = get_ability_annotation(enUS_value) if enUS_value else None
+        annotation = get_ability_annotation(enUS_value, used_cores) if enUS_value else None
         
         if koKR_value:
             if subtype_id == 227020:  # 서사시
