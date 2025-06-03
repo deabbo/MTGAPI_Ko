@@ -1,4 +1,6 @@
 local translationStatus = {}
+local dfcQueue = {}
+local isProcessingDFC = false
 
 function onLoad()
     -- 오브젝트 로드시
@@ -22,6 +24,63 @@ function hasKorean(text)
     return text:find("[%z\1-\127\194-\244][\128-\191]")
 end
 
+function safeSetState(obj, id, delay)
+    -- id는 숫자로 받되 문자열 키로도 확인 가능
+    delay = delay or 0  -- 지연 시간 없으면 즉시 실행
+
+    if not obj or not obj.setState or not obj.getStates then
+        -- print("오류: 상태 변경 불가 (오브젝트가 상태를 지원하지 않음)")
+        return
+    end
+
+    local currentId = obj.getStateId()
+    if currentId == id then
+        -- 이미 원하는 상태이면 무시
+        -- print("이미 상태 "..id.." 입니다 - GUID: " .. obj.getGUID())
+        return
+    end
+
+    local states = obj.getStates()
+    if not states then
+        -- print("오류: getStates()가 nil을 반환함 - GUID: " .. obj.getGUID())
+        return
+    end
+
+    local hasTargetState = states[tostring(id)] or states[id]
+    if not hasTargetState then
+        -- print("오류: 상태 "..id.." 가 존재하지 않음 - GUID: " .. obj.getGUID())
+        return
+    end
+
+    local switch = function()
+        obj.setState(id)
+        -- print("상태를 "..id.."로 변경함 - GUID: " .. obj.getGUID())
+    end
+
+    if delay > 0 then
+        Wait.time(switch, delay)
+    else
+        switch()
+    end
+end
+
+function enqueueDFCTranslation(name, obj, args)
+    table.insert(dfcQueue, { name = name, obj = obj, args = args })
+    processNextDFC()
+end
+
+function processNextDFC()
+    if isProcessingDFC or #dfcQueue == 0 then return end
+    isProcessingDFC = true
+
+    local item = table.remove(dfcQueue, 1)
+    translateDFC(item.name, item.obj, item.args, function()
+        isProcessingDFC = false
+        Wait.time(processNextDFC, 0.3)  -- 다음 카드로 약간의 딜레이 후 진행
+    end)
+end
+
+
 function translateObjects()
     --메인로직
     for _, obj in ipairs(getAllObjects()) do
@@ -37,7 +96,7 @@ function translateObjects()
                         -- 줄바꿈 이전의 데이터만 다음 함수로 보냄
                         local value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
                         -- print("DFC 카드")
-                        translateDFC(value, obj, "search_value")
+                        enqueueDFCTranslation(value, obj, "search_value")
                     else
                         -- Single 카드와 Split 카드 처리
                         local value = name:match("^[^\n]*"):gsub("^%s*(.-)%s*$", "%1")
@@ -50,7 +109,7 @@ function translateObjects()
     end
 end
 
-function translateDFC(name, obj, args)
+function translateDFC(name, obj, args, onComplete)
     --양면카드 로직
     -- print("translateDFC 호출됨")
     local objID = obj.getGUID()
@@ -92,15 +151,10 @@ function translateDFC(name, obj, args)
 
                             if obj2 and obj2.setState and obj2.getStates then
                                 local states = obj2.getStates()
-                                if states and (states["1"] or states[1]) then
-                                    Wait.time(function()
-                                        local safeStates = obj2.getStates()
-                                        if safeStates and (safeStates["1"] or safeStates[1]) then
-                                            obj2.setState(1)
-                                        end
-                                    end, 3)
-                                end
+                                local hasState1 = states and (states["1"] or states[1])
+                                safeSetState(obj2, 1, 0.3)
                             end
+                            if onComplete then onComplete() end
                         end
                     end
                 end
@@ -148,7 +202,7 @@ function translateSingleOrSplitCard(name, obj, args)
 end
 
 function requestTranslation(name, obj, version, callback, args)
-    local url = "https://mtgapi-ko.onrender.com/translate?".. args .."=" .. urlencode(name)
+    local url = "https://combative-kay-deabbo-8fd701a1.koyeb.app/translate?".. args .."=" .. urlencode(name)
     -- print("요청URL"..tostring(url))
     WebRequest.get(url, function(request)
         handleResponse(request, obj, version, callback)
@@ -241,11 +295,11 @@ function applySingleTranslation(obj, data)
             translatedText = translatedText .. "\n" .. "충성도 : " .. toughness
         end
 
-        translatedText = translatedText .. "\n [sup][i]" .. flavorText .. "[/i][/sup]"
+        translatedText = translatedText .. "\n\n [sup][i]" .. flavorText .. "[/i][/sup]"
 
         if obj and obj.setDescription then
             obj.setDescription(translatedText)
-        end
+        end 
     end
     
     if rarity then

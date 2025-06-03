@@ -5,70 +5,101 @@ import re
 import sys
 import string
 
-ANNOTATION_DATA = {}
+# 디버깅용 코드
+def dump_annotation_data(filename="annotation_detailed_dump.txt"):
+    with open(filename, "w", encoding="utf-8") as f:
+        for core, data in ANNOTATION_DATA_DETAILED.items():
+            f.write(f"== Keyword: {core} ==\n")
+            for variant in data["variants"]:
+                typ = variant["type"]
+                en = variant["enUS"]
+                ko = variant["koKR"]
+                f.write(f" - [{typ}] {en} => {ko}\n")
+            f.write("\n")
 
-# annotation_data 딕셔너리 전체를 출력하는 디버깅 코드 예시
+ANNOTATION_DATA_DETAILED = {}
 
-# def debug_print_annotation_data(annotation_data, filename="annotation_debug_log.txt"):
-#     with open(filename, 'w', encoding='utf-8') as f:
-#         f.write("[DEBUG] Annotation Data Dump:\n\n")
-#         for key, value in annotation_data.items():
-#             f.write(f"Key: {key}\n")
-#             # value가 str인 경우
-#             if isinstance(value, str):
-#                 f.write(f"  koKR: {value}\n\n")
-#             # value가 dict인 경우
-#             elif isinstance(value, dict):
-#                 en_text = value.get("enUS", "<no enUS>")
+def extract_core_key_and_type(full_key: str):
+    """
+    Key에서 중심 키워드와 타입(body/title 등)을 추출합니다.
+    
+    예:
+    - 'AbilityHanger/Keyword/CasualtyN_Body' → ('casualty', 'body')
+    - 'AbilityHanger/Keyword/Adapt4_Title' → ('adapt', 'title')
+    - 'AbilityHanger/Keyword/Exploit' → ('exploit', 'body') ← 접미어 없으면 기본 body
+    """
+    key_part = full_key.split("AbilityHanger/Keyword/")[-1]
+    
+    # 중심 키워드 추출: 숫자/X 접미어 및 _Body/_Title 제거
+    base_key = re.sub(r'(_Body|_Title)?$', '', key_part)
+    base_key = re.sub(r'[\dXx]+$', '', base_key)
+    core_keyword = base_key.lower()
 
-#                 ko_text = value.get("koKR", "<no koKR>")
-#                 f.write(f"  enUS: {en_text}\n")
-#                 f.write(f"  koKR: {ko_text}\n\n")
-#             else:
-#                 f.write(f"  Value: {value}\n\n")
-#     print(f"Annotation data dumped to {filename}")
+    # 키 타입 결정
+    if '_Body' in key_part:
+        key_type = 'body'
+    elif '_Title' in key_part:
+        key_type = 'title'
+    else:
+        key_type = 'body'  # 접미어가 없으면 body로 간주
+
+    return core_keyword, key_type
 
 
+# 새로 만든 로직
+def build_annotation_dictionary_from_file():
+    """
+    SQLite 파일에서 AbilityHanger/Keyword 관련 localization 데이터를 추출해 주석 사전 구조로 구성합니다
+    """
+    global ANNOTATION_DATA_DETAILED
 
-# 사용 예시
-# debug_print_annotation_data(annotation_data)
-
-# 위 코드를 실제 실행 위치에서 호출하여 annotation_data 내용을 확인하세요.
-
-def load_localization_data():
-    """Load annotation data from the Raw_ClientLocalization_*.mtga file and process koKR text."""
-    global ANNOTATION_DATA
     localization_files = glob.glob('Raw_ClientLocalization_*.mtga')
     if not localization_files:
         print("No localization files found.")
         return
     
-    localization_file = localization_files[0]  # Use the first localization file found
+    file_path = localization_files[0]  # Use the first localization file found
+
     try:
-        conn = sqlite3.connect(localization_file)
+        conn = sqlite3.connect(file_path)
         cursor = conn.cursor()
 
-        # Select all localization data for AbilityHanger/Keyword
         cursor.execute('''
-            SELECT Key, koKR 
+            SELECT Key, enUS, koKR 
             FROM loc
             WHERE Key LIKE 'AbilityHanger/Keyword/%'
         ''')
         rows = cursor.fetchall()
 
-        for key, kokr in rows:
-            cleaned_kokr = process_kokr_text(kokr)
+        for key, enus, kokr in rows:
+            # flavor나 reminder 키는 아예 무시
+            if '_FlavorText' in key or '_ReminderText' in key:
+                continue
 
-            # Strip suffixes like _Body, digits, and letters from the end of key base
-            base_key = key.replace('_Body', '')
-            base_key = re.sub(r'[\dA-Z_]+$', '', base_key)
-            normalized_key = base_key.lower()
-            no_space_key = re.sub(r'\s+', '', normalized_key)
+            core, key_type = extract_core_key_and_type(key)
+            last_segment = key.split('/')[-1]
+            kokr = replace_sprite_tags(kokr)
+            kokr = replace_ability_cost_token(kokr)
+            kokr = normalize_braced_costs_for_card_text(kokr)
+            kokr = re.sub(r'\bo(\d)(?![\dA-Z])', r'\1', kokr)
+            entry = {
+                "key": key,
+                "type": key_type,
+                "enUS": enus.strip() if enus else "",
+                "koKR": kokr.strip() if kokr else ""
+            }
+            if core not in ANNOTATION_DATA_DETAILED:
+                ANNOTATION_DATA_DETAILED[core] = {"variants": []}
+            ANNOTATION_DATA_DETAILED[core]["variants"].append(entry)
 
-            # Store under multiple normalized forms
-            for k in {normalized_key, no_space_key}:
-                if k not in ANNOTATION_DATA:
-                    ANNOTATION_DATA[k] = cleaned_kokr.strip()
+            if key_type == 'body' and '_Body' not in key:
+                title_entry = {
+                    "key": key,
+                    "type": "title", 
+                    "enUS": last_segment,  # crew1, amassorcs2 등
+                    "koKR": kokr.strip() if kokr else ""
+                }
+                ANNOTATION_DATA_DETAILED[core]["variants"].append(title_entry)
 
     except sqlite3.Error as e:
         print(f"Error reading localization data: {e}")
@@ -76,9 +107,127 @@ def load_localization_data():
         if conn:
             conn.close()
     
-    # debug_print_annotation_data(ANNOTATION_DATA)
+
+def get_ability_annotation(ability_name):
+    cleaned_name = clean_ability_name_for_matching(ability_name)
+
+    # Step 1: title 매칭
+    for core, data in ANNOTATION_DATA_DETAILED.items():
+        for variant in data["variants"]:
+            if variant["type"] == "title":
+                title_en = variant["enUS"].strip().lower()
+                cleaned_title = re.sub(r'\s+', '', title_en)
+
+                if cleaned_title and cleaned_title in cleaned_name:
+                    if variant["koKR"]:
+                        return variant["koKR"]
+
+    # Step 2: core 매칭
+    for core, data in ANNOTATION_DATA_DETAILED.items():
+        if core in cleaned_name:
+            body_entry = next(
+                (v for v in data["variants"] if v["type"] == "body" and v["koKR"]),
+                None
+            )
+            if body_entry:
+                return body_entry["koKR"]
+
+    return None
 
 
+# 디버그용
+def debug_get_ability_annotation(ability_name, debug_log_file="annotation_debug_log.txt"):
+    cleaned_name = clean_ability_name_for_matching(ability_name)
+
+    with open(debug_log_file, "a", encoding="utf-8") as log:
+        log.write("{\n")
+        log.write(f'  "input": "{ability_name}",\n')
+        log.write(f'  "cleaned": "{cleaned_name}",\n')
+
+        # Step 1: title 매칭
+        for core, data in ANNOTATION_DATA_DETAILED.items():
+            for variant in data["variants"]:
+                if variant["type"] == "title":
+                    title_en = variant["enUS"].strip().lower()
+                    cleaned_title = re.sub(r'\s+', '', title_en)
+
+                    if cleaned_title and cleaned_title in cleaned_name:
+                        for core, data in ANNOTATION_DATA_DETAILED.items():
+                            for variant in data["variants"]:
+                                if variant["type"] == "title":
+                                    title_en = variant["enUS"].strip().lower()
+                                    cleaned_title = re.sub(r'\s+', '', title_en)
+
+                                    if cleaned_title and cleaned_title in cleaned_name:
+                                        if variant["koKR"]:  # ✅ 이거 바로 반환해야 함
+                                            log.write('  "matched": {\n')
+                                            log.write('    "type": "title",\n')
+                                            log.write(f'    "key": "{title_en}",\n')
+                                            log.write(f'    "koKR": "{variant["koKR"]}"\n')
+                                            log.write('  }\n')
+                                            log.write("}\n\n")
+                                            return variant["koKR"]
+
+        # Step 2: core 매칭
+        for core, data in ANNOTATION_DATA_DETAILED.items():
+            if core in cleaned_name:
+                body_entry = next(
+                    (v for v in data["variants"] if v["type"] == "body" and v["koKR"]),
+                    None
+                )
+                if body_entry:
+                    log.write('  "matched": {\n')
+                    log.write('    "type": "core",\n')
+                    log.write(f'    "key": "{core}",\n')
+                    log.write(f'    "koKR": "{body_entry["koKR"]}"\n')
+                    log.write('  }\n')
+                    log.write("}\n\n")
+                    return body_entry["koKR"]
+
+        # 매칭 실패
+        log.write('  "matched": null\n')
+        log.write("}\n\n")
+    return None
+
+
+# 여러 함수들
+def replace_html_tags_with_brackets(text):
+    """Replace HTML tags with brackets [] instead of removing them."""
+    return re.sub(r'<[^>]*>', lambda m: f'[{m.group(0)}]', text)
+
+def clean_hash_prefix(text):
+    """Remove the leading '#' from any word starting with '#'."""
+    return re.sub(r'\b#(\S+)', r'\1', text)
+
+def clean_localizations_koKR(cursor, koKR, loc_id):
+    """Clean and update the koKR field in the Localizations table."""
+    # 1. 중괄호 내 o제거 및 T → 탭 치환
+    def replace_brace_costs(match):
+        inside = match.group(1)  # 예: o1oB, oT
+        if inside == "oT":
+            return "탭"
+        return inside.replace("o", "")
+
+    cleaned_koKR = re.sub(r'\{([^}]+)\}', replace_brace_costs, koKR)
+
+    # 2. HTML 태그 제거
+    cleaned_koKR = replace_html_tags_with_brackets(cleaned_koKR)
+
+    # 3. # 해시 prefix 제거
+    cleaned_koKR = clean_hash_prefix(cleaned_koKR)
+    cursor.execute('''
+        UPDATE Localizations_koKR
+        SET Loc = ?
+        WHERE LocId = ?
+    ''', (cleaned_koKR, loc_id))
+
+def delete_wrong_value(cursor):
+    """Delete rows where Formatted = 2 from the Localizations table."""
+    cursor.execute('''
+        DELETE FROM Localizations_koKR
+        WHERE Formatted = 2 or Loc LIKE '#%'
+    ''')
+    print("Deleted wrong rows")
 
 def process_kokr_text(text):
     """Process koKR text to replace patterns as specified."""
@@ -93,87 +242,76 @@ def process_kokr_text(text):
     
     return text
 
-def clean_ability_name(ability_name):
+def clean_ability_name_for_matching(ability_name):
+    text = re.sub(r'\{[^}]*\}', '', ability_name)  # {o2} 등 제거
+    return re.sub(r'\s+', '', text.lower())        # 공백 제거 + 소문자화
+
+def replace_sprite_tags(text):
+    def sprite_replacer(match):
+        name = match.group(1)
+
+        # 배경색 유색마나
+        if name in {"{manaType0}"}:
+            return "좌측 배경색의 유색마나"
+
+        if name in {"{manaType2}"}:
+            return "우측 배경색의 유색마나"
+        
+        # 혼합 피렉시아 마나
+        if name == "{manaCombined}":
+            return "혼합 피렉시아 마나"
+
+        # 유색 피렉시아 마나: xP + WUBRG
+        if re.fullmatch(r"xP{color}", name):
+            return "유색 피렉시아 마나"
+
+        # 유색마나: x + WUBRG
+        if re.fullmatch(r"x{color}", name):
+            return "유색마나"
+
+        # 탭: xT
+        if re.fullmatch(r"x[0-9A-Z]+", name):
+            value = name[1:]
+            if value == "T":
+                return "탭"
+            elif re.fullmatch(r"[WUBRG]{2}", value):
+                return f"{value[0]} 또는 {value[1]}"
+            else:
+                return value
+
+        # 그 외는 name 그대로 반환
+        return name
+
+    return re.sub(r'<sprite="[^"]+"\s+name="([^"]+)".*?>', sprite_replacer, text)
+
+def normalize_braced_costs_for_card_text(text):
     """
-    Remove trailing numerals or X, trim whitespace, keep {} templates,
-    remove most punctuation, and convert to lowercase.
+    카드 텍스트에서 마나 비용 표현을 정제:
+    - {oT} → 탭
+    - {oU}, {oWB}, {o2} → U, WB, 2
+    - {3} → 3
+    - 중괄호는 제거
     """
-    # Remove trailing space + number or X
-    cleaned_name = re.sub(r'\s+(\d+|x)$', '', ability_name.strip(), flags=re.IGNORECASE)
-    
-    # Remove punctuation except {}
-    cleaned_name = re.sub(r'[^\w\s{}]', '', cleaned_name)
+    def replacer(match):
+        content = match.group(1)  # 예: oU, 3, oWB 등
+        if content.startswith('o'):
+            value = content[1:]
+            if value == 'T':
+                return '탭'
+            return value
+        return content  # 그냥 숫자 등
 
-    return cleaned_name.lower()
-
-def get_ability_annotation(ability_name):
-    cleaned_name = clean_ability_name(ability_name)
-
-    # 비용 포함 형태: 예) "ninjutsu {3BB}" → ability = "ninjutsu", cost = "{3BB}"
-    ability_match = re.match(r'(\w+)\s+\{([^}]+)\}', ability_name)
-    if ability_match:
-        keyword = ability_match.group(1).lower()
-        cost = ability_match.group(2)
-
-        # 비용에서 'o' 제거 (예: o3BB -> 3BB)
-        cost = remove_o_in_braces('{' + cost + '}').strip('{}')
-
-        # 주석용 키 정규화
-        body_key = f"AbilityHanger/Keyword/{keyword}".lower()
-        body = ANNOTATION_DATA.get(body_key)
-
-        if body:
-            # 주석 본문에서 'o'가 들어간 부분 제거
-            body = re.sub(r'o(?=[A-Z0-9])', '', body)
-            # 비용 + 설명 (비용은 비용 문자열만, 쉼표 하나만)
-            return f"{cost}, {body}"
-
-    # 일반 키워드 처리
-    base_key = f"AbilityHanger/Keyword/{cleaned_name}".lower()
-    no_space_key = f"AbilityHanger/Keyword/{cleaned_name.replace(' ', '')}".lower()
-    if base_key in ANNOTATION_DATA:
-        annotation = ANNOTATION_DATA[base_key]
-        annotation = re.sub(r'o(?=[A-Z0-9])', '', annotation)
-        return annotation
-    if no_space_key in ANNOTATION_DATA:
-        annotation = ANNOTATION_DATA[no_space_key]
-        annotation = re.sub(r'o(?=[A-Z0-9])', '', annotation)
-        return annotation
-
-    return None
+    return re.sub(r'\{([^}]+)\}', replacer, text)
 
 
+def replace_ability_cost_token(text):
+    """
+    어노테이션용 텍스트에서 {abilityCost} → 비용 치환
+    """
+    return re.sub(r'\s*,?\s*\{abilityCost\}\s*,?\s*', ' 비용 ', text)
 
-def remove_o_in_braces(text):
-    """Remove 'o' characters within braces {}."""
-    return re.sub(r'\{[^}]*o[^}]*\}', lambda m: m.group(0).replace('o', ''), text)
 
-def replace_html_tags_with_brackets(text):
-    """Replace HTML tags with brackets [] instead of removing them."""
-    return re.sub(r'<[^>]*>', lambda m: f'[{m.group(0)}]', text)
-
-def clean_hash_prefix(text):
-    """Remove the leading '#' from any word starting with '#'."""
-    return re.sub(r'\b#(\S+)', r'\1', text)
-
-def clean_localizations_koKR(cursor, koKR, loc_id):
-    """Clean and update the koKR field in the Localizations table."""
-    cleaned_koKR = remove_o_in_braces(koKR)
-    cleaned_koKR = replace_html_tags_with_brackets(cleaned_koKR)
-    cleaned_koKR = clean_hash_prefix(cleaned_koKR)
-    cursor.execute('''
-        UPDATE Localizations
-        SET koKR = ?
-        WHERE LocId = ?
-    ''', (cleaned_koKR, loc_id))
-
-def delete_wrong_value(cursor):
-    """Delete rows where Formatted = 2 from the Localizations table."""
-    cursor.execute('''
-        DELETE FROM Localizations
-        WHERE Formatted = 2 or koKR LIKE '#%'
-    ''')
-    print("Deleted wrong rows")
+# 카드 데이터 베이스 처리 존
 
 def get_localization_value(cursor, loc_id, lang_col):
     """
@@ -181,42 +319,30 @@ def get_localization_value(cursor, loc_id, lang_col):
     First prioritize the row where Formatted = 0.
     If no row exists with Formatted = 0, then prioritize Formatted = 1.
     """
-    cursor.execute(f'''
-        SELECT {lang_col}
-        FROM Localizations
-        WHERE LocId = ?
-        ORDER BY Formatted ASC
-        LIMIT 1
-    ''', (loc_id,))
+
+    if lang_col == "koKR":
+        cursor.execute(f'''
+            SELECT Loc
+            FROM Localizations_koKR
+            WHERE LocId = ?
+            ORDER BY Formatted ASC
+            LIMIT 1
+        ''', (loc_id,))
+        
+        result = cursor.fetchone()
+    else:
+        cursor.execute(f'''
+            SELECT Loc
+            FROM Localizations_enUS
+            WHERE LocId = ?
+            ORDER BY Formatted ASC
+            LIMIT 1
+        ''', (loc_id,))
+        
+        result = cursor.fetchone()
     
-    result = cursor.fetchone()
     return result[0] if result else None
 
-def annotate_inline_keywords(text: str) -> str:
-    if not text:
-        return text
-
-    annotated_keywords = set()
-
-    for keyword_en, annotation in ANNOTATION_DATA.items():
-        base_keyword = re.sub(r'\W+', '', keyword_en.lower())
-
-        # 키워드가 포함된 단어들까지 포괄적으로 감지 (예: 'mobilize 2', 'gains mobilize 2')
-        pattern = re.compile(rf'(?<!\w)({keyword_en}\s*\d*)(?!\w)', re.IGNORECASE)
-
-        def replacer(match):
-            full_keyword = match.group(1)
-            keyword_part = full_keyword.split()[0]  # mobilize
-            key_base = re.sub(r'\W+', '', keyword_part.lower())
-
-            if key_base == base_keyword and key_base not in annotated_keywords:
-                annotated_keywords.add(key_base)
-                return f"{full_keyword} ({annotation})"
-            return full_keyword
-
-        text = pattern.sub(replacer, text)
-
-    return text
 
 def process_ability_ids(cursor, ability_ids, subtype_id):
 
@@ -225,7 +351,7 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
     ability_id_list = ability_ids.split(',')
     
     # Check if 260 is in the list 미리읽기일 경우 
-    include_260 = '260' in ability_id_list
+    is_prelude_first = ability_id_list and ability_id_list[0].split(':')[-1] == '614628'
     
     # Create a list of ability parts
     for idx, ability_id in enumerate(ability_id_list):
@@ -234,47 +360,52 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
         loyalty_cost = None
         loc_id = parts[-1]  # The part after the last ':'
         
-        if len(parts) == 1: # : 로 나뉘어져있지 않다면 
-            cursor.execute('''
-                SELECT TextId, LoyaltyCost
-                FROM abilities 
-                WHERE Id = ?
-            ''', (loc_id,))
-            text_id_result = cursor.fetchone()
-            if text_id_result:
-                text_id = text_id_result[0]
-                loyalty_cost = text_id_result[1]
-                loc_id = text_id
+        cursor.execute('''
+            SELECT LoyaltyCost
+            FROM Abilities 
+            WHERE textId = ?
+        ''', (loc_id,))
+        result = cursor.fetchone()
+        loyalty_cost = result[0] if result else None
         
         enUS_value = get_localization_value(cursor, loc_id, 'enUS')
         koKR_value = get_localization_value(cursor, loc_id, 'koKR')
         annotation = get_ability_annotation(enUS_value) if enUS_value else None
-
+        
         if koKR_value:
-            if subtype_id == 227020:  # 서사시라면
-                if ability_id == '260':  # 미리읽기라면
+            if subtype_id == 227020:  # 서사시
+                if loc_id == '614628':
                     text_parts.append(koKR_value)
                     annotationed_parts.append(koKR_value)
                 else:
-                    index = ability_id_list.index(ability_id) + 1
-                    if include_260:
-                        index -= 1
+                    base_index = ability_id_list.index(ability_id)
+                    if is_prelude_first:
+                        base_index -= 1
+                    index = base_index + 1
                     numbered_text = f"{index} — {koKR_value}"
+
+                    annotated_text = numbered_text
+                    if annotation and annotation != "X":
+                        annotated_text += f" [sup][{annotation}][/sup]"
+
                     text_parts.append(numbered_text)
-                    annotationed_parts.append(numbered_text)
-            elif loyalty_cost:  # 플레인즈워커라면
+                    annotationed_parts.append(annotated_text)
+            elif loyalty_cost is not None:
                 formatted_text = f"{loyalty_cost} : {koKR_value}"
+                annotated_text = formatted_text
+                if annotation and annotation != "X":
+                    annotated_text += f" [sup][{annotation}][/sup]"
                 text_parts.append(formatted_text)
-                annotationed_parts.append(formatted_text)
+                annotationed_parts.append(annotated_text)
             else:  # 그 이외 능력일시
                 plain_text = koKR_value
                 annotationed_text = koKR_value
-                if annotation:
+                if annotation and annotation != "X":
                     annotationed_text += f" [sup][{annotation}][/sup]"
-                annotationed_text = annotate_inline_keywords(annotationed_text)
+                annotationed_parts.append(annotationed_text)
 
                 text_parts.append(plain_text)
-                annotationed_parts.append(annotationed_text)
+                
                 
 
     plain_text = '\n'.join(text_parts)
@@ -290,17 +421,18 @@ def fetch_data_and_create_json(file):
         conn = sqlite3.connect(file)
         cursor = conn.cursor()
 
-        load_localization_data()
-        
+        build_annotation_dictionary_from_file()
+        # 디버깅용
+        # dump_annotation_data(filename="annotation_detailed_dump.txt") 
         # Delete all rows where Formatted = 2
         delete_wrong_value(cursor)
         conn.commit()  # Commit the delete changes to the database
 
         # Clean the koKR field in the Localizations table
-        cursor.execute('SELECT LocId, koKR FROM Localizations')
+        cursor.execute('SELECT LocId, Loc FROM Localizations_koKR')
         rows = cursor.fetchall()
-        for loc_id, koKR in rows:
-            clean_localizations_koKR(cursor, koKR, loc_id)
+        for loc_id, Loc in rows:
+            clean_localizations_koKR(cursor, Loc, loc_id)
         
         # Fetch data from the Cards table
         cursor.execute('''
