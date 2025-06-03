@@ -374,12 +374,14 @@ def get_localization_value(cursor, loc_id, lang_col):
     return result[0] if result else None
 
 
-def process_ability_ids(cursor, ability_ids, subtype_id):
+def process_ability_ids(cursor, ability_ids, subtypes):
 
     text_parts = []
     annotationed_parts = []
     ability_id_list = ability_ids.split(',')
     used_cores = set()
+    is_saga = subtypes and '347' in subtypes.split(',')
+
     # Check if 260 is in the list 미리읽기일 경우 
     is_prelude_first = ability_id_list and ability_id_list[0].split(':')[-1] == '614628'
     
@@ -403,7 +405,7 @@ def process_ability_ids(cursor, ability_ids, subtype_id):
         annotation = get_ability_annotation(enUS_value, used_cores) if enUS_value else None
         
         if koKR_value:
-            if subtype_id == 227020:  # 서사시
+            if is_saga:  # 서사시
                 if loc_id == '614628':
                     text_parts.append(koKR_value)
                     annotationed_parts.append(koKR_value)
@@ -476,6 +478,7 @@ def fetch_data_and_create_json(file):
                 c.Toughness AS toughness,
                 c.FlavorTextId AS flavor_text_id,
                 c.abilityIds AS ability_ids,
+                c.Subtypes AS subtypes,
                 c.Order_MythicToCommon AS rarity_number,
                 c.Colors AS colors
             FROM Cards c
@@ -489,7 +492,7 @@ def fetch_data_and_create_json(file):
         seen_search_values = set()
 
         for row in rows:
-            (arena_id, title_id, type_id, subtype_id, mana_value, power, toughness, flavor_text_id, ability_ids, rarity_number, colors) = row
+            (arena_id, title_id, type_id, subtype_id, mana_value, power, toughness, flavor_text_id, ability_ids, subtypes, rarity_number, colors) = row
 
             # Find card_name using TitleId
             card_name = get_localization_value(cursor, title_id, 'koKR') if title_id else None
@@ -535,7 +538,7 @@ def fetch_data_and_create_json(file):
 
             # Process ability text
             if ability_ids:
-                plain_text, annotationed_text = process_ability_ids(cursor, ability_ids, subtype_id)
+                plain_text, annotationed_text = process_ability_ids(cursor, ability_ids, subtypes)
             else:
                 plain_text = annotationed_text = None
 
