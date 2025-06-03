@@ -3,7 +3,8 @@ import glob
 import json
 import re
 import sys
-import string
+
+ANNOTATION_DATA_DETAILED = {}
 
 # 디버깅용 코드
 def dump_annotation_data(filename="annotation_detailed_dump.txt"):
@@ -16,179 +17,6 @@ def dump_annotation_data(filename="annotation_detailed_dump.txt"):
                 ko = variant["koKR"]
                 f.write(f" - [{typ}] {en} => {ko}\n")
             f.write("\n")
-
-ANNOTATION_DATA_DETAILED = {}
-
-def extract_core_key_and_type(full_key: str):
-    """
-    Key에서 중심 키워드와 타입(body/title 등)을 추출합니다.
-    
-    예:
-    - 'AbilityHanger/Keyword/CasualtyN_Body' → ('casualty', 'body')
-    - 'AbilityHanger/Keyword/Adapt4_Title' → ('adapt', 'title')
-    - 'AbilityHanger/Keyword/Exploit' → ('exploit', 'body') ← 접미어 없으면 기본 body
-    """
-    key_part = full_key.split("AbilityHanger/Keyword/")[-1]
-    
-    # 중심 키워드 추출: 숫자/X 접미어 및 _Body/_Title 제거
-    base_key = re.sub(r'(_Body|_Title)?$', '', key_part)
-    base_key = re.sub(r'[\dXx]+$', '', base_key)
-    core_keyword = base_key.lower()
-
-    # 키 타입 결정
-    if '_Body' in key_part:
-        key_type = 'body'
-    elif '_Title' in key_part:
-        key_type = 'title'
-    else:
-        key_type = 'body'  # 접미어가 없으면 body로 간주
-
-    return core_keyword, key_type
-
-
-# 새로 만든 로직
-def build_annotation_dictionary_from_file():
-    """
-    SQLite 파일에서 AbilityHanger/Keyword 관련 localization 데이터를 추출해 주석 사전 구조로 구성합니다
-    """
-    global ANNOTATION_DATA_DETAILED
-
-    localization_files = glob.glob('Raw_ClientLocalization_*.mtga')
-    if not localization_files:
-        print("No localization files found.")
-        return
-    
-    file_path = localization_files[0]  # Use the first localization file found
-
-    try:
-        conn = sqlite3.connect(file_path)
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            SELECT Key, enUS, koKR 
-            FROM loc
-            WHERE Key LIKE 'AbilityHanger/Keyword/%'
-        ''')
-        rows = cursor.fetchall()
-
-        for key, enus, kokr in rows:
-            # flavor나 reminder 키는 아예 무시
-            if '_FlavorText' in key or '_ReminderText' in key:
-                continue
-
-            core, key_type = extract_core_key_and_type(key)
-            last_segment = key.split('/')[-1]
-            kokr = replace_sprite_tags(kokr)
-            kokr = replace_ability_cost_token(kokr)
-            kokr = normalize_braced_costs_for_card_text(kokr)
-            kokr = re.sub(r'\bo(\d)(?![\dA-Z])', r'\1', kokr)
-            entry = {
-                "key": key,
-                "type": key_type,
-                "enUS": enus.strip() if enus else "",
-                "koKR": kokr.strip() if kokr else ""
-            }
-            if core not in ANNOTATION_DATA_DETAILED:
-                ANNOTATION_DATA_DETAILED[core] = {"variants": []}
-            ANNOTATION_DATA_DETAILED[core]["variants"].append(entry)
-
-            if key_type == 'body' and '_Body' not in key:
-                title_entry = {
-                    "key": key,
-                    "type": "title", 
-                    "enUS": last_segment,  # crew1, amassorcs2 등
-                    "koKR": kokr.strip() if kokr else ""
-                }
-                ANNOTATION_DATA_DETAILED[core]["variants"].append(title_entry)
-
-    except sqlite3.Error as e:
-        print(f"Error reading localization data: {e}")
-    finally:
-        if conn:
-            conn.close()
-    
-
-def get_ability_annotation(ability_name):
-    cleaned_name = clean_ability_name_for_matching(ability_name)
-
-    # Step 1: title 매칭
-    for core, data in ANNOTATION_DATA_DETAILED.items():
-        for variant in data["variants"]:
-            if variant["type"] == "title":
-                title_en = variant["enUS"].strip().lower()
-                cleaned_title = re.sub(r'\s+', '', title_en)
-
-                if cleaned_title and cleaned_title in cleaned_name:
-                    if variant["koKR"]:
-                        return variant["koKR"]
-
-    # Step 2: core 매칭
-    for core, data in ANNOTATION_DATA_DETAILED.items():
-        if core in cleaned_name:
-            body_entry = next(
-                (v for v in data["variants"] if v["type"] == "body" and v["koKR"]),
-                None
-            )
-            if body_entry:
-                return body_entry["koKR"]
-
-    return None
-
-
-# 디버그용
-def debug_get_ability_annotation(ability_name, debug_log_file="annotation_debug_log.txt"):
-    cleaned_name = clean_ability_name_for_matching(ability_name)
-
-    with open(debug_log_file, "a", encoding="utf-8") as log:
-        log.write("{\n")
-        log.write(f'  "input": "{ability_name}",\n')
-        log.write(f'  "cleaned": "{cleaned_name}",\n')
-
-        # Step 1: title 매칭
-        for core, data in ANNOTATION_DATA_DETAILED.items():
-            for variant in data["variants"]:
-                if variant["type"] == "title":
-                    title_en = variant["enUS"].strip().lower()
-                    cleaned_title = re.sub(r'\s+', '', title_en)
-
-                    if cleaned_title and cleaned_title in cleaned_name:
-                        for core, data in ANNOTATION_DATA_DETAILED.items():
-                            for variant in data["variants"]:
-                                if variant["type"] == "title":
-                                    title_en = variant["enUS"].strip().lower()
-                                    cleaned_title = re.sub(r'\s+', '', title_en)
-
-                                    if cleaned_title and cleaned_title in cleaned_name:
-                                        if variant["koKR"]:  # ✅ 이거 바로 반환해야 함
-                                            log.write('  "matched": {\n')
-                                            log.write('    "type": "title",\n')
-                                            log.write(f'    "key": "{title_en}",\n')
-                                            log.write(f'    "koKR": "{variant["koKR"]}"\n')
-                                            log.write('  }\n')
-                                            log.write("}\n\n")
-                                            return variant["koKR"]
-
-        # Step 2: core 매칭
-        for core, data in ANNOTATION_DATA_DETAILED.items():
-            if core in cleaned_name:
-                body_entry = next(
-                    (v for v in data["variants"] if v["type"] == "body" and v["koKR"]),
-                    None
-                )
-                if body_entry:
-                    log.write('  "matched": {\n')
-                    log.write('    "type": "core",\n')
-                    log.write(f'    "key": "{core}",\n')
-                    log.write(f'    "koKR": "{body_entry["koKR"]}"\n')
-                    log.write('  }\n')
-                    log.write("}\n\n")
-                    return body_entry["koKR"]
-
-        # 매칭 실패
-        log.write('  "matched": null\n')
-        log.write("}\n\n")
-    return None
-
 
 # 여러 함수들
 def replace_html_tags_with_brackets(text):
@@ -311,6 +139,191 @@ def replace_ability_cost_token(text):
     return re.sub(r'\s*,?\s*\{abilityCost\}\s*,?\s*', ' 비용 ', text)
 
 
+
+
+def extract_core_key_and_type(full_key: str):
+    """
+    Key에서 중심 키워드와 타입(body/title 등)을 추출합니다.
+    
+    예:
+    - 'AbilityHanger/Keyword/CasualtyN_Body' → ('casualty', 'body')
+    - 'AbilityHanger/Keyword/Adapt4_Title' → ('adapt', 'title')
+    - 'AbilityHanger/Keyword/Exploit' → ('exploit', 'body') ← 접미어 없으면 기본 body
+    """
+    key_part = full_key.split("AbilityHanger/Keyword/")[-1]
+    
+    # 중심 키워드 추출: 숫자/X 접미어 및 _Body/_Title 제거
+    base_key = re.sub(r'(_Body|_Title)?$', '', key_part)
+    base_key = re.sub(r'[\dXx]+$', '', base_key)
+    core_keyword = base_key.lower()
+
+    # 키 타입 결정
+    if '_Body' in key_part:
+        key_type = 'body'
+    elif '_Title' in key_part:
+        key_type = 'title'
+    else:
+        key_type = 'body'  # 접미어가 없으면 body로 간주
+
+    return core_keyword, key_type
+
+
+# 새로 만든 로직
+def build_annotation_dictionary_from_file():
+    """
+    SQLite 파일에서 AbilityHanger/Keyword 관련 localization 데이터를 추출해 주석 사전 구조로 구성합니다
+    """
+    global ANNOTATION_DATA_DETAILED
+
+    localization_files = glob.glob('Raw_ClientLocalization_*.mtga')
+    if not localization_files:
+        print("No localization files found.")
+        return
+    
+    file_path = localization_files[0]  # Use the first localization file found
+
+    try:
+        conn = sqlite3.connect(file_path)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT Key, enUS, koKR 
+            FROM loc
+            WHERE Key LIKE 'AbilityHanger/Keyword/%'
+        ''')
+        rows = cursor.fetchall()
+
+        for key, enus, kokr in rows:
+            # flavor나 reminder 키는 아예 무시
+            if '_FlavorText' in key or '_ReminderText' in key:
+                continue
+
+            core, key_type = extract_core_key_and_type(key)
+            last_segment = key.split('/')[-1]
+            kokr = replace_sprite_tags(kokr)
+            kokr = replace_ability_cost_token(kokr)
+            kokr = normalize_braced_costs_for_card_text(kokr)
+            kokr = re.sub(r'\bo(\d)(?![\dA-Z])', r'\1', kokr)
+            entry = {
+                "key": key,
+                "type": key_type,
+                "enUS": enus.strip() if enus else "",
+                "koKR": kokr.strip() if kokr else ""
+            }
+            if core not in ANNOTATION_DATA_DETAILED:
+                ANNOTATION_DATA_DETAILED[core] = {"variants": []}
+            ANNOTATION_DATA_DETAILED[core]["variants"].append(entry)
+
+            if key_type == 'body' and '_Body' not in key:
+                title_entry = {
+                    "key": key,
+                    "type": "title", 
+                    "enUS": last_segment,  # crew1, amassorcs2 등
+                    "koKR": kokr.strip() if kokr else ""
+                }
+                ANNOTATION_DATA_DETAILED[core]["variants"].append(title_entry)
+
+    except sqlite3.Error as e:
+        print(f"Error reading localization data: {e}")
+    finally:
+        if conn:
+            conn.close()
+    
+
+def get_ability_annotation(ability_name):
+    cleaned_name = clean_ability_name_for_matching(ability_name)
+
+    # Step 1: title 매칭 → index 기준으로 바로 앞 body를 가져오기
+    for core, data in ANNOTATION_DATA_DETAILED.items():
+        variants = data["variants"]
+        for idx, variant in enumerate(variants):
+            if variant["type"] == "title":
+                title_en = variant["enUS"].strip().lower()
+                cleaned_title = re.sub(r'\s+', '', title_en)
+
+                if cleaned_title and cleaned_title in cleaned_name:
+                    # 정확한 짝: title의 바로 앞 index에 있는 body
+                    if idx > 0 and variants[idx - 1]["type"] == "body":
+                        body_koKR = variants[idx - 1]["koKR"]
+                        if body_koKR:
+                            return body_koKR
+
+                    # fallback (혹시 잘못된 순서가 있다면)
+                    for j in range(len(variants)):
+                        if variants[j]["type"] == "body" and variants[j]["koKR"]:
+                            return variants[j]["koKR"]
+
+    # Step 2: core 키워드 매칭
+    for core, data in ANNOTATION_DATA_DETAILED.items():
+        if core in cleaned_name:
+            body_entry = next(
+                (v for v in data["variants"] if v["type"] == "body" and v["koKR"]),
+                None
+            )
+            if body_entry:
+                return body_entry["koKR"]
+
+    return None
+
+
+
+
+
+# 디버그용
+def debug_get_ability_annotation(ability_name, debug_log_file="annotation_debug_log.txt"):
+    cleaned_name = clean_ability_name_for_matching(ability_name)
+
+    with open(debug_log_file, "a", encoding="utf-8") as log:
+        log.write("{\n")
+        log.write(f'  "input": "{ability_name}",\n')
+        log.write(f'  "cleaned": "{cleaned_name}",\n')
+
+        # Step 1: title 매칭
+        for core, data in ANNOTATION_DATA_DETAILED.items():
+            for variant in data["variants"]:
+                if variant["type"] == "title":
+                    title_en = variant["enUS"].strip().lower()
+                    cleaned_title = re.sub(r'\s+', '', title_en)
+
+                    if cleaned_title and cleaned_title in cleaned_name:
+                        for core, data in ANNOTATION_DATA_DETAILED.items():
+                            for variant in data["variants"]:
+                                if variant["type"] == "title":
+                                    title_en = variant["enUS"].strip().lower()
+                                    cleaned_title = re.sub(r'\s+', '', title_en)
+
+                                    if cleaned_title and cleaned_title in cleaned_name:
+                                        if variant["koKR"]:  # ✅ 이거 바로 반환해야 함
+                                            log.write('  "matched": {\n')
+                                            log.write('    "type": "title",\n')
+                                            log.write(f'    "key": "{title_en}",\n')
+                                            log.write(f'    "koKR": "{variant["koKR"]}"\n')
+                                            log.write('  }\n')
+                                            log.write("}\n\n")
+                                            return variant["koKR"]
+
+        # Step 2: core 매칭
+        for core, data in ANNOTATION_DATA_DETAILED.items():
+            if core in cleaned_name:
+                body_entry = next(
+                    (v for v in data["variants"] if v["type"] == "body" and v["koKR"]),
+                    None
+                )
+                if body_entry:
+                    log.write('  "matched": {\n')
+                    log.write('    "type": "core",\n')
+                    log.write(f'    "key": "{core}",\n')
+                    log.write(f'    "koKR": "{body_entry["koKR"]}"\n')
+                    log.write('  }\n')
+                    log.write("}\n\n")
+                    return body_entry["koKR"]
+
+        # 매칭 실패
+        log.write('  "matched": null\n')
+        log.write("}\n\n")
+    return None
+
+
 # 카드 데이터 베이스 처리 존
 
 def get_localization_value(cursor, loc_id, lang_col):
@@ -423,7 +436,7 @@ def fetch_data_and_create_json(file):
 
         build_annotation_dictionary_from_file()
         # 디버깅용
-        # dump_annotation_data(filename="annotation_detailed_dump.txt") 
+        dump_annotation_data(filename="annotation_detailed_dump.txt") 
         # Delete all rows where Formatted = 2
         delete_wrong_value(cursor)
         conn.commit()  # Commit the delete changes to the database
