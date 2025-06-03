@@ -152,7 +152,7 @@ function translateDFC(name, obj, args, onComplete)
                             if obj2 and obj2.setState and obj2.getStates then
                                 local states = obj2.getStates()
                                 local hasState1 = states and (states["1"] or states[1])
-                                safeSetState(obj2, 1, 0.3)
+                                safeSetState(obj2, 1, 0.6)
                             end
                             if onComplete then onComplete() end
                         end

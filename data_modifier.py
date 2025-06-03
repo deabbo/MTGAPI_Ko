@@ -138,7 +138,13 @@ def replace_ability_cost_token(text):
     """
     return re.sub(r'\s*,?\s*\{abilityCost\}\s*,?\s*', ' 비용 ', text)
 
-
+def clean_enus_text(text):
+    if not text:
+        return ""
+    text = re.sub(r'\{[^}]*\}', '', text)  # {numeral}, {cost} 등 제거
+    text = text.replace('!', '')           # 느낌표 제거
+    text = text.strip()
+    return text
 
 
 def extract_core_key_and_type(full_key: str):
@@ -189,14 +195,14 @@ def build_annotation_dictionary_from_file():
         cursor.execute('''
             SELECT Key, enUS, koKR 
             FROM loc
-            WHERE Key LIKE 'AbilityHanger/Keyword/%'
+            WHERE Key LIKE 'AbilityHanger/%'
         ''')
         rows = cursor.fetchall()
 
         for key, enus, kokr in rows:
             # flavor나 reminder 키는 아예 무시
-            if '_FlavorText' in key or '_ReminderText' in key:
-                continue
+            if not key.startswith("AbilityHanger/Keyword/") and not key.startswith("AbilityHanger/AbilityWord/"):
+                continue  #
 
             core, key_type = extract_core_key_and_type(key)
             last_segment = key.split('/')[-1]
@@ -204,10 +210,11 @@ def build_annotation_dictionary_from_file():
             kokr = replace_ability_cost_token(kokr)
             kokr = normalize_braced_costs_for_card_text(kokr)
             kokr = re.sub(r'\bo(\d)(?![\dA-Z])', r'\1', kokr)
+            enus_cleaned = clean_enus_text(enus)
             entry = {
                 "key": key,
                 "type": key_type,
-                "enUS": enus.strip() if enus else "",
+                "enUS": enus_cleaned if enus else "",
                 "koKR": kokr.strip() if kokr else ""
             }
             if core not in ANNOTATION_DATA_DETAILED:
@@ -446,7 +453,7 @@ def fetch_data_and_create_json(file):
 
         build_annotation_dictionary_from_file()
         # 디버깅용
-        dump_annotation_data(filename="annotation_detailed_dump.txt") 
+        # dump_annotation_data(filename="annotation_detailed_dump.txt") 
         # Delete all rows where Formatted = 2
         delete_wrong_value(cursor)
         conn.commit()  # Commit the delete changes to the database
