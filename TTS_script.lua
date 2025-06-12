@@ -2,9 +2,38 @@ local translationStatus = {}
 local dfcQueue = {}
 local isProcessingDFC = false
 
+
 function onLoad()
     -- 오브젝트 로드시
+    createTranslateButton()
     print("번역 시작")
+    translateObjects()
+end
+
+function createTranslateButton()
+    self.createButton({
+        click_function = "onReTranslateButtonClicked",
+        function_owner = self,
+        label          = "재번역",
+        position       = {0, 0.3, 0},
+        rotation       = {0, 0, 0},
+        width          = 1600,
+        height         = 400,
+        font_size      = 250,
+        tooltip        = "이 버튼을 누르면 전체 카드가 다시 번역됩니다"
+    })
+end
+
+function onReTranslateButtonClicked(playerColor)
+    print("재번역중...")
+    
+    -- 캐시와 상태 초기화
+    translationCache = {}
+    translationStatus = {}
+    dfcQueue = {}
+    isProcessingDFC = false
+
+    -- 번역 다시 시작
     translateObjects()
 end
 
@@ -114,6 +143,16 @@ function translateDFC(name, obj, args, onComplete)
     -- print("translateDFC 호출됨")
     local objID = obj.getGUID()
     -- GUID 기준으로 오브젝트 가져옴
+    if obj.getStateId() ~= 1 then
+        safeSetState(obj, 1)
+        Wait.time(function()
+            -- 상태가 바뀐 후 다시 큐에 넣기 (중복 방지용 플래그 필요시 추가 가능)
+            enqueueDFCTranslation(name, obj, args)
+            if onComplete then onComplete() end
+        end, 0.5)
+        return
+    end
+
     local alreadyProcessed = {}
 
     translationStatus[objID] = { translationCount = 0, totalTranslations = 0, data1 = nil, data2 = nil }
@@ -202,7 +241,7 @@ function translateSingleOrSplitCard(name, obj, args)
 end
 
 function requestTranslation(name, obj, version, callback, args)
-    local url = "https://combative-kay-deabbo-8fd701a1.koyeb.app/translate?".. args .."=" .. urlencode(name)
+    local url = "https://mtgapi-ko.lhs00900.workers.dev/translate?".. args .."=" .. urlencode(name)
     -- print("요청URL"..tostring(url))
     WebRequest.get(url, function(request)
         handleResponse(request, obj, version, callback)
